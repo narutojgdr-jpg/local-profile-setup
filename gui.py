@@ -9,12 +9,15 @@ CONFIG_FILE = "config.json"
 PROXIES_FILE = "proxies.txt"
 COOKIES_FILE = "cookies.json"
 
-# Tema preto + roxo
-BG = "#0d0d12"
-FG = "#e6e6f0"
+# Tema mais limpo, preto profundo + roxo
+BG = "#0a0a0f"
+FG = "#f0f0f5"
+MUTED = "#9ca3af"
 ACCENT = "#a855f7"
-CARD = "#1a1a24"
-BORDER = "#2d2d3d"
+ACCENT_HOVER = "#9333ea"
+CARD = "#15151f"
+INPUT = "#1e1e2a"
+BORDER = "#2a2a3a"
 
 COUNTRIES = [
     ("br", "Brazil"),
@@ -166,20 +169,22 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("580x740")
+        root.geometry("600x760")
         root.configure(bg=BG)
 
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab", background=CARD, foreground=FG, padding=[12, 6])
-        style.map("TNotebook.Tab", background=[("selected", ACCENT)], foreground=[("selected", "white")])
+        style.configure("TNotebook.Tab", background=CARD, foreground=MUTED, padding=[14, 7], font=("Segoe UI", 9))
+        style.map("TNotebook.Tab",
+                  background=[("selected", ACCENT)],
+                  foreground=[("selected", "white")])
 
         self.cfg = load_config()
         self.cookies_data = load_cookies()
 
         notebook = ttk.Notebook(root)
-        notebook.pack(fill="both", expand=True, padx=5, pady=5)
+        notebook.pack(fill="both", expand=True, padx=8, pady=8)
 
         self.tab_profiles = ttk.Frame(notebook)
         notebook.add(self.tab_profiles, text="Perfis")
@@ -196,97 +201,100 @@ class App:
 
     def build_profiles_tab(self):
         parent = self.tab_profiles
-        parent.configure(style="TFrame")
 
-        tk.Label(parent, text="API Token", bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
-        self.token = tk.Entry(parent, width=65, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
+        tk.Label(parent, text="API Token", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
+        self.token = tk.Entry(parent, width=68, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.token.insert(0, self.cfg.get("token", ""))
-        self.token.pack(padx=10, pady=5)
+        self.token.pack(padx=12, pady=(0,8))
 
         self.use_gologin = tk.BooleanVar(value=False)
-        tk.Checkbutton(parent, text="Usar proxies do GoLogin", variable=self.use_gologin, bg=BG, fg=FG, selectcolor=CARD, activebackground=BG, activeforeground=FG).pack(anchor="w", padx=10, pady=5)
+        tk.Checkbutton(parent, text="Usar proxies do GoLogin", variable=self.use_gologin,
+                       bg=BG, fg=FG, selectcolor=INPUT, activebackground=BG, activeforeground=FG,
+                       font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=4)
 
         country_frame = tk.Frame(parent, bg=BG)
-        country_frame.pack(anchor="w", padx=10)
-        tk.Label(country_frame, text="País:", bg=BG, fg=FG).pack(side="left")
-        self.country = ttk.Combobox(country_frame, width=20, state="readonly")
+        country_frame.pack(anchor="w", padx=12, pady=4)
+        tk.Label(country_frame, text="País:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
+        self.country = ttk.Combobox(country_frame, width=22, state="readonly")
         self.country["values"] = [f"{code.upper()} - {name}" for code, name in COUNTRIES]
         self.country.current(0)
-        self.country.pack(side="left", padx=5)
+        self.country.pack(side="left", padx=6)
 
-        tk.Label(parent, text="Proxies custom (um por linha)", bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
-        self.proxies = scrolledtext.ScrolledText(parent, height=8, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
+        tk.Label(parent, text="Proxies custom (um por linha)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
+        self.proxies = scrolledtext.ScrolledText(parent, height=9, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.proxies.insert("1.0", load_proxies())
-        self.proxies.pack(padx=10, pady=5, fill="both", expand=True)
+        self.proxies.pack(padx=12, pady=(0,8), fill="both", expand=True)
 
         frame = tk.Frame(parent, bg=BG)
-        frame.pack(pady=10)
-        tk.Label(frame, text="Quantidade:", bg=BG, fg=FG).grid(row=0, column=0, padx=5)
-        self.qty = tk.Entry(frame, width=8, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
+        frame.pack(pady=8)
+        tk.Label(frame, text="Quantidade:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).grid(row=0, column=0, padx=6)
+        self.qty = tk.Entry(frame, width=8, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10), justify="center")
         self.qty.insert(0, "5")
-        self.qty.grid(row=0, column=1, padx=5)
+        self.qty.grid(row=0, column=1, padx=6)
 
-        tk.Label(frame, text="Prefixo:", bg=BG, fg=FG).grid(row=0, column=2, padx=5)
-        self.prefix = tk.Entry(frame, width=10, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
+        tk.Label(frame, text="Prefixo:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).grid(row=0, column=2, padx=6)
+        self.prefix = tk.Entry(frame, width=10, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
         self.prefix.insert(0, "P")
-        self.prefix.grid(row=0, column=3, padx=5)
+        self.prefix.grid(row=0, column=3, padx=6)
 
-        tk.Button(parent, text="Salvar Proxies", command=self.save, bg=CARD, fg=FG, relief="flat", activebackground=ACCENT).pack(pady=5)
-        tk.Button(parent, text="Criar Perfis", command=self.create, bg=ACCENT, fg="white", relief="flat", activebackground="#9333ea").pack(pady=5)
+        tk.Button(parent, text="Salvar Proxies", command=self.save, bg=CARD, fg=FG, relief="flat",
+                  activebackground=BORDER, font=("Segoe UI", 9), padx=12, pady=6).pack(pady=4)
+        tk.Button(parent, text="Criar Perfis", command=self.create, bg=ACCENT, fg="white", relief="flat",
+                  activebackground=ACCENT_HOVER, font=("Segoe UI", 9, "bold"), padx=16, pady=7).pack(pady=4)
 
-        self.status = tk.Label(parent, text="", bg=BG, fg=FG)
-        self.status.pack(pady=5)
+        self.status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
+        self.status.pack(pady=6)
 
     def build_cookies_tab(self):
         parent = self.tab_cookies
 
-        tk.Label(parent, text="Nome / Email do Gmail:", bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
-        self.cookie_name = tk.Entry(parent, width=50, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
-        self.cookie_name.pack(padx=10, pady=5)
+        tk.Label(parent, text="Nome / Email do Gmail:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
+        self.cookie_name = tk.Entry(parent, width=52, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
+        self.cookie_name.pack(padx=12, pady=(0,8))
 
-        tk.Label(parent, text="Cole o JSON dos cookies aqui:", bg=BG, fg=FG).pack(anchor="w", padx=10)
-        self.cookie_json = scrolledtext.ScrolledText(parent, height=12, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
-        self.cookie_json.pack(padx=10, pady=5, fill="both", expand=True)
+        tk.Label(parent, text="Cole o JSON dos cookies aqui:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+        self.cookie_json = scrolledtext.ScrolledText(parent, height=13, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.cookie_json.pack(padx=12, pady=5, fill="both", expand=True)
 
         btn_frame = tk.Frame(parent, bg=BG)
-        btn_frame.pack(pady=5)
-        tk.Button(btn_frame, text="Salvar Cookie", command=self.save_cookie, bg=CARD, fg=FG, relief="flat").pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Excluir Selecionado", command=self.delete_cookie, bg=CARD, fg=FG, relief="flat").pack(side="left", padx=5)
+        btn_frame.pack(pady=6)
+        tk.Button(btn_frame, text="Salvar Cookie", command=self.save_cookie, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=10, pady=5).pack(side="left", padx=4)
+        tk.Button(btn_frame, text="Excluir Selecionado", command=self.delete_cookie, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=10, pady=5).pack(side="left", padx=4)
 
-        tk.Label(parent, text="Contas salvas:", bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
-        self.cookie_list = tk.Listbox(parent, height=8, bg=CARD, fg=FG, selectbackground=ACCENT, relief="flat")
-        self.cookie_list.pack(padx=10, pady=5, fill="x")
+        tk.Label(parent, text="Contas salvas:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
+        self.cookie_list = tk.Listbox(parent, height=8, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        self.cookie_list.pack(padx=12, pady=5, fill="x")
         self.refresh_cookie_list()
 
         create_frame = tk.Frame(parent, bg=BG)
-        create_frame.pack(pady=10)
-        tk.Button(create_frame, text="Criar Perfil com este Cookie", command=self.create_from_cookie, bg=ACCENT, fg="white", relief="flat").pack()
+        create_frame.pack(pady=8)
+        tk.Button(create_frame, text="Criar Perfil com este Cookie", command=self.create_from_cookie, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=6).pack()
 
-        self.cookie_status = tk.Label(parent, text="", bg=BG, fg=FG)
-        self.cookie_status.pack(pady=5)
+        self.cookie_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
+        self.cookie_status.pack(pady=6)
 
     def build_site_tab(self):
         parent = self.tab_site
 
-        tk.Label(parent, text="URL do site (ex: https://tempmailsuko.shop)", bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
-        self.site_url = tk.Entry(parent, width=60, bg=CARD, fg=FG, insertbackground=FG, relief="flat")
+        tk.Label(parent, text="URL do site", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
+        self.site_url = tk.Entry(parent, width=62, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
         self.site_url.insert(0, self.cfg.get("site_url", "https://tempmailsuko.shop"))
-        self.site_url.pack(padx=10, pady=5)
+        self.site_url.pack(padx=12, pady=(0,8))
 
-        tk.Label(parent, text="Token / chave admin (se tiver)", bg=BG, fg=FG).pack(anchor="w", padx=10)
-        self.site_token = tk.Entry(parent, width=60, bg=CARD, fg=FG, insertbackground=FG, relief="flat", show="*")
+        tk.Label(parent, text="Token / chave admin (se tiver)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+        self.site_token = tk.Entry(parent, width=62, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", show="*", font=("Segoe UI", 10))
         self.site_token.insert(0, self.cfg.get("site_token", ""))
-        self.site_token.pack(padx=10, pady=5)
+        self.site_token.pack(padx=12, pady=(0,8))
 
-        tk.Button(parent, text="Buscar Gmails do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat").pack(pady=10)
+        tk.Button(parent, text="Buscar Gmails do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=6).pack(pady=8)
 
-        self.site_list = tk.Listbox(parent, height=15, bg=CARD, fg=FG, selectbackground=ACCENT, relief="flat")
-        self.site_list.pack(padx=10, pady=5, fill="both", expand=True)
+        self.site_list = tk.Listbox(parent, height=16, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
 
-        tk.Button(parent, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=CARD, fg=FG, relief="flat").pack(pady=5)
+        tk.Button(parent, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(pady=6)
 
-        self.site_status = tk.Label(parent, text="", bg=BG, fg=FG)
-        self.site_status.pack(pady=5)
+        self.site_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
+        self.site_status.pack(pady=6)
 
     def refresh_cookie_list(self):
         self.cookie_list.delete(0, tk.END)
@@ -308,7 +316,6 @@ class App:
         if not url:
             messagebox.showerror("Erro", "URL do site vazia")
             return
-        # Placeholder - precisa de endpoint no site
         self.site_status.config(text="Buscando...")
         self.root.update()
         try:
@@ -332,9 +339,7 @@ class App:
             return
         line = self.site_list.get(sel[0])
         email = line.split(" |")[0]
-        # TODO: pegar cookies do site se o endpoint retornar
         self.site_status.config(text=f"Criando perfil para {email}...")
-        # Reusa a lógica de create_from_cookie se tiver cookies salvos com esse nome
         if email in self.cookies_data:
             self.cookie_list.selection_clear(0, tk.END)
             idx = list(sorted(self.cookies_data.keys())).index(email)
