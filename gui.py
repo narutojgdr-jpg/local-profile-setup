@@ -3,10 +3,25 @@ import requests
 import time
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, ttk
 
 CONFIG_FILE = "config.json"
 PROXIES_FILE = "proxies.txt"
+
+COUNTRIES = [
+    ("br", "Brazil"),
+    ("us", "United States"),
+    ("gb", "United Kingdom"),
+    ("de", "Germany"),
+    ("fr", "France"),
+    ("ca", "Canada"),
+    ("au", "Australia"),
+    ("nl", "Netherlands"),
+    ("es", "Spain"),
+    ("it", "Italy"),
+    ("mx", "Mexico"),
+    ("ar", "Argentina"),
+]
 
 def load_config():
     if not Path(CONFIG_FILE).exists():
@@ -71,7 +86,7 @@ def create_profile(token, name):
     except Exception as e:
         return False, str(e)
 
-def set_proxy(token, profile_id, proxy):
+def set_custom_proxy(token, profile_id, proxy):
     url = "https://api.gologin.com/browser/proxy/many/v2"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -91,21 +106,49 @@ def set_proxy(token, profile_id, proxy):
     except Exception as e:
         return False, str(e)
 
+def set_gologin_proxy(token, profile_id, country):
+    url = "https://api.gologin.com/users-proxies/mobile-proxy"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "countryCode": country,
+        "profileIdToLink": profile_id,
+        "isMobile": True
+    }
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=30)
+        return r.ok, r.text[:150] if not r.ok else "gologin proxy set"
+    except Exception as e:
+        return False, str(e)
+
 class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("500x600")
+        root.geometry("520x680")
 
         cfg = load_config()
 
         tk.Label(root, text="API Token").pack(anchor="w", padx=10, pady=(10,0))
-        self.token = tk.Entry(root, width=60)
+        self.token = tk.Entry(root, width=65)
         self.token.insert(0, cfg.get("token", ""))
         self.token.pack(padx=10, pady=5)
 
-        tk.Label(root, text="Proxies (um por linha)").pack(anchor="w", padx=10)
-        self.proxies = scrolledtext.ScrolledText(root, height=12)
+        self.use_gologin = tk.BooleanVar(value=False)
+        tk.Checkbutton(root, text="Usar proxies do GoLogin (em vez da lista)", variable=self.use_gologin).pack(anchor="w", padx=10, pady=5)
+
+        country_frame = tk.Frame(root)
+        country_frame.pack(anchor="w", padx=10)
+        tk.Label(country_frame, text="País:").pack(side="left")
+        self.country = ttk.Combobox(country_frame, width=20, state="readonly")
+        self.country["values"] = [f"{code.upper()} - {name}" for code, name in COUNTRIES]
+        self.country.current(0)
+        self.country.pack(side="left", padx=5)
+
+        tk.Label(root, text="Proxies custom (um por linha)").pack(anchor="w", padx=10, pady=(10,0))
+        self.proxies = scrolledtext.ScrolledText(root, height=10)
         self.proxies.insert("1.0", load_proxies())
         self.proxies.pack(padx=10, pady=5, fill="both", expand=True)
 
@@ -141,15 +184,18 @@ class App:
             messagebox.showerror("Erro", "Token vazio")
             return
 
+        use_gl = self.use_gologin.get()
+        country_code = self.country.get().split(" - ")[0].lower()
+
         lines = [l.strip() for l in self.proxies.get("1.0", "end").splitlines() if l.strip()]
-        if not lines:
-            messagebox.showerror("Erro", "Nenhum proxy")
+        if not use_gl and not lines:
+            messagebox.showerror("Erro", "Nenhum proxy na lista")
             return
 
         try:
             qty = int(self.qty.get())
         except:
-            qty = len(lines)
+            qty = 5 if use_gl else len(lines)
 
         prefix = self.prefix.get().strip() or "P"
 
@@ -159,31 +205,36 @@ class App:
         created = 0
         for i in range(qty):
             name = f"{prefix}{i+1}"
-            proxy_line = lines[i % len(lines)]
-            proxy = parse_proxy(proxy_line)
-            if not proxy:
-                self.status.config(text=f"{name}: proxy inválido")
-                self.root.update()
-                continue
 
             ok, profile_id = create_profile(token, name)
             if not ok:
-                self.status.config(text=f"{name}: FAIL criar - {profile_id[:40]}")
+                self.status.config(text=f"{name}: FAIL criar - {str(profile_id)[:40]}")
                 self.root.update()
                 time.sleep(0.5)
                 continue
 
-            pok, pmsg = set_proxy(token, profile_id, proxy)
+            if use_gl:
+                pok, pmsg = set_gologin_proxy(token, profile_id, country_code)
+            else:
+                proxy_line = lines[i % len(lines)]
+                proxy = parse_proxy(proxy_line)
+                if not proxy:
+                    self.status.config(text=f"{name}: proxy inválido")
+                    self.root.update()
+                    continue
+                pok, pmsg = set_custom_proxy(token, profile_id, proxy)
+
             if pok:
                 created += 1
-                self.status.config(text=f"{name}: OK + proxy")
+                self.status.config(text=f"{name}: OK")
             else:
                 self.status.config(text=f"{name}: criado mas proxy FAIL - {pmsg[:40]}")
             self.root.update()
             time.sleep(0.6)
 
-        self.status.config(text=f"Concluído. {created}/{qty} com proxy. Dê F5 no GoLogin.")
-        messagebox.showinfo("Pronto", f"{created} de {qty} perfis criados com proxy.")
+        tipo = "GoLogin" if use_gl else "custom"
+        self.status.config(text=f"Concluído. {created}/{qty} com proxy {tipo}. Dê F5 no GoLogin.")
+        messagebox.showinfo("Pronto", f"{created} de {qty} perfis criados.")
 
 if __name__ == "__main__":
     root = tk.Tk()
