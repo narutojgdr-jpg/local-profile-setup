@@ -28,6 +28,29 @@ def save_proxies(text):
     with open(PROXIES_FILE, "w", encoding="utf-8") as f:
         f.write(text)
 
+def parse_proxy(line):
+    line = line.strip()
+    if line.startswith("http://") or line.startswith("https://"):
+        line = line.split("//", 1)[1]
+    parts = line.split(":")
+    if len(parts) >= 4:
+        return {
+            "mode": "http",
+            "host": parts[0],
+            "port": int(parts[1]),
+            "username": parts[2],
+            "password": ":".join(parts[3:])
+        }
+    elif len(parts) == 2:
+        return {
+            "mode": "http",
+            "host": parts[0],
+            "port": int(parts[1]),
+            "username": "",
+            "password": ""
+        }
+    return None
+
 def create_profile(token, name):
     url = "https://api.gologin.com/browser/quick"
     headers = {
@@ -42,9 +65,29 @@ def create_profile(token, name):
         r = requests.post(url, headers=headers, json=body, timeout=30)
         if r.ok:
             data = r.json()
-            return True, data.get("id", "created")
+            return True, data.get("id")
         else:
             return False, r.text[:200]
+    except Exception as e:
+        return False, str(e)
+
+def set_proxy(token, profile_id, proxy):
+    url = "https://api.gologin.com/browser/proxy/many/v2"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "proxies": [
+            {
+                "profileId": profile_id,
+                "proxy": proxy
+            }
+        ]
+    }
+    try:
+        r = requests.patch(url, headers=headers, json=body, timeout=30)
+        return r.ok, r.text[:150] if not r.ok else "proxy set"
     except Exception as e:
         return False, str(e)
 
@@ -61,7 +104,7 @@ class App:
         self.token.insert(0, cfg.get("token", ""))
         self.token.pack(padx=10, pady=5)
 
-        tk.Label(root, text="Proxies (um por linha, host:port) - opcional por enquanto").pack(anchor="w", padx=10)
+        tk.Label(root, text="Proxies (um por linha)").pack(anchor="w", padx=10)
         self.proxies = scrolledtext.ScrolledText(root, height=12)
         self.proxies.insert("1.0", load_proxies())
         self.proxies.pack(padx=10, pady=5, fill="both", expand=True)
@@ -98,10 +141,15 @@ class App:
             messagebox.showerror("Erro", "Token vazio")
             return
 
+        lines = [l.strip() for l in self.proxies.get("1.0", "end").splitlines() if l.strip()]
+        if not lines:
+            messagebox.showerror("Erro", "Nenhum proxy")
+            return
+
         try:
             qty = int(self.qty.get())
         except:
-            qty = 5
+            qty = len(lines)
 
         prefix = self.prefix.get().strip() or "P"
 
@@ -111,17 +159,31 @@ class App:
         created = 0
         for i in range(qty):
             name = f"{prefix}{i+1}"
-            ok, msg = create_profile(token, name)
-            if ok:
+            proxy_line = lines[i % len(lines)]
+            proxy = parse_proxy(proxy_line)
+            if not proxy:
+                self.status.config(text=f"{name}: proxy inválido")
+                self.root.update()
+                continue
+
+            ok, profile_id = create_profile(token, name)
+            if not ok:
+                self.status.config(text=f"{name}: FAIL criar - {profile_id[:40]}")
+                self.root.update()
+                time.sleep(0.5)
+                continue
+
+            pok, pmsg = set_proxy(token, profile_id, proxy)
+            if pok:
                 created += 1
-                self.status.config(text=f"{name}: OK ({msg[:20]})")
+                self.status.config(text=f"{name}: OK + proxy")
             else:
-                self.status.config(text=f"{name}: FAIL - {msg[:50]}")
+                self.status.config(text=f"{name}: criado mas proxy FAIL - {pmsg[:40]}")
             self.root.update()
             time.sleep(0.6)
 
-        self.status.config(text=f"Concluído. {created}/{qty} criados. Dê F5 no GoLogin.")
-        messagebox.showinfo("Pronto", f"{created} de {qty} perfis criados.")
+        self.status.config(text=f"Concluído. {created}/{qty} com proxy. Dê F5 no GoLogin.")
+        messagebox.showinfo("Pronto", f"{created} de {qty} perfis criados com proxy.")
 
 if __name__ == "__main__":
     root = tk.Tk()
