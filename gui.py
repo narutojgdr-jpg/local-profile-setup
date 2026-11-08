@@ -171,11 +171,12 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("640x820")
+        root.geometry("660x840")
         root.configure(bg=BG)
 
         style = ttk.Style()
         style.theme_use("clam")
+        style.configure("TFrame", background=BG)
         style.configure("TNotebook", background=BG, borderwidth=0)
         style.configure("TNotebook.Tab", background=CARD, foreground=MUTED, padding=[14, 7], font=("Segoe UI", 9))
         style.map("TNotebook.Tab",
@@ -189,13 +190,13 @@ class App:
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
 
-        self.tab_profiles = ttk.Frame(notebook)
+        self.tab_profiles = ttk.Frame(notebook, style="TFrame")
         notebook.add(self.tab_profiles, text="Perfis")
 
-        self.tab_cookies = ttk.Frame(notebook)
+        self.tab_cookies = ttk.Frame(notebook, style="TFrame")
         notebook.add(self.tab_cookies, text="Cookies / Gmail")
 
-        self.tab_site = ttk.Frame(notebook)
+        self.tab_site = ttk.Frame(notebook, style="TFrame")
         notebook.add(self.tab_site, text="Site / Import")
 
         self.build_profiles_tab()
@@ -206,7 +207,7 @@ class App:
         parent = self.tab_profiles
 
         tk.Label(parent, text="API Token", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
-        self.token = tk.Entry(parent, width=70, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.token = tk.Entry(parent, width=72, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.token.insert(0, self.cfg.get("token", ""))
         self.token.pack(padx=12, pady=(0,8))
 
@@ -265,7 +266,7 @@ class App:
         tk.Button(btn_frame, text="Excluir Selecionado", command=self.delete_cookie, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=10, pady=5).pack(side="left", padx=4)
 
         tk.Label(parent, text="Contas salvas:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
-        self.cookie_list = tk.Listbox(parent, height=8, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        self.cookie_list = tk.Listbox(parent, height=8, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none", selectmode="extended")
         self.cookie_list.pack(padx=12, pady=5, fill="x")
         self.refresh_cookie_list()
 
@@ -288,13 +289,13 @@ class App:
         self.paste_area = scrolledtext.ScrolledText(parent, height=9, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
         self.paste_area.pack(padx=12, pady=(0,6), fill="x")
 
-        tk.Label(parent, text="Contas (local + site)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
-        self.site_list = tk.Listbox(parent, height=13, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        tk.Label(parent, text="Contas (local + site) — Ctrl+clique pra selecionar vários", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+        self.site_list = tk.Listbox(parent, height=13, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none", selectmode="extended")
         self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
 
         btn_row = tk.Frame(parent, bg=BG)
         btn_row.pack(pady=6)
-        tk.Button(btn_row, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Criar Perfis Selecionados", command=self.create_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left", padx=4)
         tk.Button(btn_row, text="Enviar Local pro Site", command=self.push_to_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
 
         self.site_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
@@ -412,15 +413,9 @@ class App:
             self.site_status.config(text=f"Falha: {str(e)[:60]}")
 
     def create_from_site(self):
-        sel = self.site_list.curselection()
-        if not sel:
-            messagebox.showerror("Erro", "Selecione um item")
-            return
-        line = self.site_list.get(sel[0])
-        email = line.split()[0]
-        cookies = self.cookies_data.get(email, [])
-        if not cookies:
-            messagebox.showerror("Erro", "Sem cookies pra essa conta")
+        sels = self.site_list.curselection()
+        if not sels:
+            messagebox.showerror("Erro", "Selecione um ou mais itens (Ctrl+clique)")
             return
 
         token = self.token.get().strip()
@@ -431,36 +426,56 @@ class App:
         use_gl = self.use_gologin.get()
         country_code = self.country.get().split(" - ")[0].lower()
 
-        lines = [l.strip() for l in self.proxies.get("1.0", "end").splitlines() if l.strip()]
-        if not use_gl and not lines:
+        proxy_lines = [l.strip() for l in self.proxies.get("1.0", "end").splitlines() if l.strip()]
+        if not use_gl and not proxy_lines:
             messagebox.showerror("Erro", "Nenhum proxy na lista")
             return
 
-        self.site_status.config(text="Criando...")
-        self.root.update()
+        created = 0
+        total = len(sels)
+        for idx, sel in enumerate(sels):
+            line = self.site_list.get(sel)
+            email = line.split()[0]
+            cookies = self.cookies_data.get(email, [])
+            if not cookies:
+                self.site_status.config(text=f"{email}: sem cookies, pulando")
+                self.root.update()
+                continue
 
-        ok, profile_id = create_profile(token, email)
-        if not ok:
-            self.site_status.config(text=f"FAIL criar: {str(profile_id)[:50]}")
-            return
+            self.site_status.config(text=f"[{idx+1}/{total}] criando {email}...")
+            self.root.update()
 
-        if use_gl:
-            pok, pmsg = set_gologin_proxy(token, profile_id, country_code)
-        else:
-            proxy_line = lines[0]
-            proxy = parse_proxy(proxy_line)
-            if not proxy:
-                self.site_status.config(text="Proxy inválido")
-                return
-            pok, pmsg = set_custom_proxy(token, profile_id, proxy)
+            ok, profile_id = create_profile(token, email)
+            if not ok:
+                self.site_status.config(text=f"{email}: FAIL criar")
+                self.root.update()
+                time.sleep(0.4)
+                continue
 
-        cok, cmsg = set_cookies(token, profile_id, cookies)
+            if use_gl:
+                pok, pmsg = set_gologin_proxy(token, profile_id, country_code)
+            else:
+                proxy_line = proxy_lines[idx % len(proxy_lines)]
+                proxy = parse_proxy(proxy_line)
+                if not proxy:
+                    self.site_status.config(text=f"{email}: proxy inválido")
+                    self.root.update()
+                    continue
+                pok, pmsg = set_custom_proxy(token, profile_id, proxy)
 
-        if pok and cok:
-            self.site_status.config(text=f"OK: {email}")
-            messagebox.showinfo("Pronto", f"Perfil '{email}' criado.")
-        else:
-            self.site_status.config(text=f"Criado mas falhou proxy/cookies")
+            cok, cmsg = set_cookies(token, profile_id, cookies)
+
+            if pok and cok:
+                created += 1
+                self.site_status.config(text=f"{email}: OK")
+            else:
+                self.site_status.config(text=f"{email}: criado mas falhou proxy/cookies")
+            self.root.update()
+            time.sleep(0.5)
+
+        self.site_status.config(text=f"Concluído. {created}/{total} perfis criados.")
+        if created:
+            messagebox.showinfo("Pronto", f"{created} de {total} perfis criados.")
 
     def save_cookie(self):
         name = self.cookie_name.get().strip()
