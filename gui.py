@@ -168,7 +168,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("600x760")
+        root.geometry("640x820")
         root.configure(bg=BG)
 
         style = ttk.Style()
@@ -181,6 +181,7 @@ class App:
 
         self.cfg = load_config()
         self.cookies_data = load_cookies()
+        self.site_accounts = {}  # email -> {pass, cookies}
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
@@ -192,7 +193,7 @@ class App:
         notebook.add(self.tab_cookies, text="Cookies / Gmail")
 
         self.tab_site = ttk.Frame(notebook)
-        notebook.add(self.tab_site, text="Site")
+        notebook.add(self.tab_site, text="Site / Import")
 
         self.build_profiles_tab()
         self.build_cookies_tab()
@@ -202,7 +203,7 @@ class App:
         parent = self.tab_profiles
 
         tk.Label(parent, text="API Token", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
-        self.token = tk.Entry(parent, width=68, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.token = tk.Entry(parent, width=70, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.token.insert(0, self.cfg.get("token", ""))
         self.token.pack(padx=12, pady=(0,8))
 
@@ -275,33 +276,52 @@ class App:
     def build_site_tab(self):
         parent = self.tab_site
 
-        tk.Label(parent, text="URL do site", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
-        self.site_url = tk.Entry(parent, width=62, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
+        tk.Label(parent, text="URL do site", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
+        self.site_url = tk.Entry(parent, width=64, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
         self.site_url.insert(0, self.cfg.get("site_url", "https://tempmailsuko.shop"))
-        self.site_url.pack(padx=12, pady=(0,8))
+        self.site_url.pack(padx=12, pady=(0,6))
 
-        tk.Label(parent, text="Token / chave admin (se tiver)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
-        self.site_token = tk.Entry(parent, width=62, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", show="*", font=("Segoe UI", 10))
+        tk.Label(parent, text="Token admin (opcional)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+        self.site_token = tk.Entry(parent, width=64, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", show="*", font=("Segoe UI", 10))
         self.site_token.insert(0, self.cfg.get("site_token", ""))
-        self.site_token.pack(padx=12, pady=(0,8))
+        self.site_token.pack(padx=12, pady=(0,6))
 
-        tk.Button(parent, text="Buscar Gmails do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=6).pack(pady=8)
+        top_btns = tk.Frame(parent, bg=BG)
+        top_btns.pack(pady=4)
+        tk.Button(top_btns, text="Buscar do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
+        tk.Button(top_btns, text="Importar Texto Colado", command=self.import_pasted, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
 
-        self.site_list = tk.Listbox(parent, height=14, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        tk.Label(parent, text="Cole o export do HTML aqui (=== email | senha === + JSON)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(6,2))
+        self.paste_area = scrolledtext.ScrolledText(parent, height=8, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
+        self.paste_area.pack(padx=12, pady=(0,6), fill="x")
+
+        tk.Label(parent, text="Contas (local + site)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+        self.site_list = tk.Listbox(parent, height=12, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
         self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
 
         btn_row = tk.Frame(parent, bg=BG)
         btn_row.pack(pady=6)
-        tk.Button(btn_row, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
-        tk.Button(btn_row, text="Enviar Conta Local pro Site", command=self.push_to_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Enviar Local pro Site", command=self.push_to_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
 
         self.site_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
-        self.site_status.pack(pady=6)
+        self.site_status.pack(pady=4)
 
     def refresh_cookie_list(self):
         self.cookie_list.delete(0, tk.END)
         for name in sorted(self.cookies_data.keys()):
             self.cookie_list.insert(tk.END, name)
+
+    def refresh_site_list(self):
+        self.site_list.delete(0, tk.END)
+        all_emails = set(self.cookies_data.keys()) | set(self.site_accounts.keys())
+        for email in sorted(all_emails):
+            src = []
+            if email in self.cookies_data:
+                src.append("local")
+            if email in self.site_accounts:
+                src.append("site")
+            self.site_list.insert(tk.END, f"{email}  ({', '.join(src)})")
 
     def save(self):
         save_proxies(self.proxies.get("1.0", "end"))
@@ -310,6 +330,40 @@ class App:
         self.cfg["site_token"] = self.site_token.get().strip()
         save_config(self.cfg)
         self.status.config(text="Salvo.")
+
+    def import_pasted(self):
+        raw = self.paste_area.get("1.0", "end").strip()
+        if not raw:
+            messagebox.showerror("Erro", "Cole o texto primeiro")
+            return
+        blocks = [b.strip() for b in raw.split("===") if b.strip()]
+        added = 0
+        for block in blocks:
+            lines = block.splitlines()
+            header = lines[0].replace("===", "").strip()
+            if "@" not in header:
+                continue
+            if "|" in header:
+                parts = [p.strip() for p in header.split("|")]
+                email = parts[0].lower()
+                password = parts[1] if len(parts) > 1 else ""
+            else:
+                email = header.lower()
+                password = ""
+            json_start = block.find("[")
+            cookies_raw = block[json_start:].strip() if json_start >= 0 else ""
+            try:
+                cookies = json.loads(cookies_raw) if cookies_raw else []
+            except:
+                cookies = []
+            self.cookies_data[email] = cookies
+            self.site_accounts[email] = {"pass": password, "cookies": cookies_raw}
+            added += 1
+        save_cookies(self.cookies_data)
+        self.refresh_cookie_list()
+        self.refresh_site_list()
+        self.paste_area.delete("1.0", "end")
+        self.site_status.config(text=f"Importados {added} do texto colado")
 
     def fetch_from_site(self):
         self.save()
@@ -325,22 +379,36 @@ class App:
             r = requests.get(f"{url}/api/admin/gologin-gmails", headers=headers, timeout=15)
             if r.ok:
                 data = r.json()
-                self.site_list.delete(0, tk.END)
+                self.site_accounts.clear()
                 for item in data.get("items", []):
-                    self.site_list.insert(tk.END, f"{item.get('email','')} | {item.get('pass','')}")
-                self.site_status.config(text=f"{len(data.get('items',[]))} itens carregados")
+                    email = item.get("email", "")
+                    if email:
+                        self.site_accounts[email] = {
+                            "pass": item.get("pass", ""),
+                            "cookies": item.get("cookies", "")
+                        }
+                        if item.get("cookies"):
+                            try:
+                                self.cookies_data[email] = json.loads(item["cookies"])
+                            except:
+                                pass
+                save_cookies(self.cookies_data)
+                self.refresh_cookie_list()
+                self.refresh_site_list()
+                self.site_status.config(text=f"{len(data.get('items',[]))} do site")
             else:
                 self.site_status.config(text=f"Erro {r.status_code}")
         except Exception as e:
             self.site_status.config(text=f"Falha: {str(e)[:60]}")
 
     def push_to_site(self):
-        sel = self.cookie_list.curselection()
+        sel = self.site_list.curselection()
         if not sel:
-            messagebox.showerror("Erro", "Selecione uma conta na aba Cookies primeiro")
+            messagebox.showerror("Erro", "Selecione uma conta na lista")
             return
-        name = self.cookie_list.get(sel[0])
-        cookies = self.cookies_data.get(name, [])
+        line = self.site_list.get(sel[0])
+        email = line.split()[0]
+        cookies = self.cookies_data.get(email, [])
 
         url = self.site_url.get().strip().rstrip("/")
         token = self.site_token.get().strip()
@@ -355,13 +423,13 @@ class App:
             if token:
                 headers["Authorization"] = f"Bearer {token}"
             payload = {
-                "email": name,
-                "pass": "",
+                "email": email,
+                "pass": self.site_accounts.get(email, {}).get("pass", ""),
                 "cookies": json.dumps(cookies) if isinstance(cookies, list) else str(cookies)
             }
             r = requests.post(f"{url}/api/admin/gologin-gmails", headers=headers, json=payload, timeout=15)
             if r.ok:
-                self.site_status.config(text=f"Enviado: {name}")
+                self.site_status.config(text=f"Enviado: {email}")
                 self.fetch_from_site()
             else:
                 self.site_status.config(text=f"Erro {r.status_code} ao enviar")
@@ -374,15 +442,50 @@ class App:
             messagebox.showerror("Erro", "Selecione um item")
             return
         line = self.site_list.get(sel[0])
-        email = line.split(" |")[0]
-        self.site_status.config(text=f"Criando perfil para {email}...")
-        if email in self.cookies_data:
-            self.cookie_list.selection_clear(0, tk.END)
-            idx = list(sorted(self.cookies_data.keys())).index(email)
-            self.cookie_list.selection_set(idx)
-            self.create_from_cookie()
+        email = line.split()[0]
+        cookies = self.cookies_data.get(email, [])
+        if not cookies:
+            messagebox.showerror("Erro", "Sem cookies pra essa conta")
+            return
+
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token GoLogin vazio (aba Perfis)")
+            return
+
+        use_gl = self.use_gologin.get()
+        country_code = self.country.get().split(" - ")[0].lower()
+
+        lines = [l.strip() for l in self.proxies.get("1.0", "end").splitlines() if l.strip()]
+        if not use_gl and not lines:
+            messagebox.showerror("Erro", "Nenhum proxy na lista")
+            return
+
+        self.site_status.config(text="Criando...")
+        self.root.update()
+
+        ok, profile_id = create_profile(token, email)
+        if not ok:
+            self.site_status.config(text=f"FAIL criar: {str(profile_id)[:50]}")
+            return
+
+        if use_gl:
+            pok, pmsg = set_gologin_proxy(token, profile_id, country_code)
         else:
-            messagebox.showinfo("Info", "Cookies não encontrados localmente. Salve na aba Cookies primeiro.")
+            proxy_line = lines[0]
+            proxy = parse_proxy(proxy_line)
+            if not proxy:
+                self.site_status.config(text="Proxy inválido")
+                return
+            pok, pmsg = set_custom_proxy(token, profile_id, proxy)
+
+        cok, cmsg = set_cookies(token, profile_id, cookies)
+
+        if pok and cok:
+            self.site_status.config(text=f"OK: {email}")
+            messagebox.showinfo("Pronto", f"Perfil '{email}' criado.")
+        else:
+            self.site_status.config(text=f"Criado mas falhou proxy/cookies")
 
     def save_cookie(self):
         name = self.cookie_name.get().strip()
@@ -397,6 +500,7 @@ class App:
             self.cookies_data[name] = cookies
             save_cookies(self.cookies_data)
             self.refresh_cookie_list()
+            self.refresh_site_list()
             self.cookie_status.config(text=f"Salvo: {name}")
             self.cookie_name.delete(0, tk.END)
             self.cookie_json.delete("1.0", tk.END)
@@ -412,6 +516,7 @@ class App:
             self.cookies_data.pop(name, None)
             save_cookies(self.cookies_data)
             self.refresh_cookie_list()
+            self.refresh_site_list()
 
     def create_from_cookie(self):
         sel = self.cookie_list.curselection()
@@ -455,10 +560,10 @@ class App:
         cok, cmsg = set_cookies(token, profile_id, cookies)
 
         if pok and cok:
-            self.cookie_status.config(text=f"OK: {name} criado com proxy + cookies. Dê F5 no GoLogin.")
+            self.cookie_status.config(text=f"OK: {name}")
             messagebox.showinfo("Pronto", f"Perfil '{name}' criado.")
         else:
-            self.cookie_status.config(text=f"Criado mas falhou proxy/cookies: {pmsg} / {cmsg}")
+            self.cookie_status.config(text=f"Criado mas falhou proxy/cookies")
 
     def create(self):
         self.save()
@@ -516,7 +621,7 @@ class App:
             time.sleep(0.6)
 
         tipo = "GoLogin" if use_gl else "custom"
-        self.status.config(text=f"Concluído. {created}/{qty} com proxy {tipo}. Dê F5 no GoLogin.")
+        self.status.config(text=f"Concluído. {created}/{qty} com proxy {tipo}.")
         messagebox.showinfo("Pronto", f"{created} de {qty} perfis criados.")
 
 if __name__ == "__main__":
