@@ -9,6 +9,9 @@ CONFIG_FILE = "config.json"
 PROXIES_FILE = "proxies.txt"
 COOKIES_FILE = "cookies.json"
 
+SITE_URL = "https://tempmailsuko.shop"
+SYNC_KEY = "suko-gl-sync-2026"
+
 BG = "#0a0a0f"
 FG = "#f0f0f5"
 MUTED = "#9ca3af"
@@ -35,7 +38,7 @@ COUNTRIES = [
 
 def load_config():
     if not Path(CONFIG_FILE).exists():
-        return {"token": "", "site_url": "https://tempmailsuko.shop", "site_token": ""}
+        return {"token": ""}
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -181,7 +184,7 @@ class App:
 
         self.cfg = load_config()
         self.cookies_data = load_cookies()
-        self.site_accounts = {}  # email -> {pass, cookies}
+        self.site_accounts = {}
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
@@ -276,27 +279,17 @@ class App:
     def build_site_tab(self):
         parent = self.tab_site
 
-        tk.Label(parent, text="URL do site", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
-        self.site_url = tk.Entry(parent, width=64, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10))
-        self.site_url.insert(0, self.cfg.get("site_url", "https://tempmailsuko.shop"))
-        self.site_url.pack(padx=12, pady=(0,6))
-
-        tk.Label(parent, text="Token admin (opcional)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
-        self.site_token = tk.Entry(parent, width=64, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", show="*", font=("Segoe UI", 10))
-        self.site_token.insert(0, self.cfg.get("site_token", ""))
-        self.site_token.pack(padx=12, pady=(0,6))
-
         top_btns = tk.Frame(parent, bg=BG)
-        top_btns.pack(pady=4)
-        tk.Button(top_btns, text="Buscar do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=5).pack(side="left", padx=4)
-        tk.Button(top_btns, text="Importar Texto Colado", command=self.import_pasted, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=5).pack(side="left", padx=4)
+        top_btns.pack(pady=8)
+        tk.Button(top_btns, text="Buscar do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=6).pack(side="left", padx=4)
+        tk.Button(top_btns, text="Importar Texto Colado", command=self.import_pasted, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=14, pady=6).pack(side="left", padx=4)
 
         tk.Label(parent, text="Cole o export do HTML aqui (=== email | senha === + JSON)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(6,2))
-        self.paste_area = scrolledtext.ScrolledText(parent, height=8, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
+        self.paste_area = scrolledtext.ScrolledText(parent, height=9, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
         self.paste_area.pack(padx=12, pady=(0,6), fill="x")
 
         tk.Label(parent, text="Contas (local + site)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
-        self.site_list = tk.Listbox(parent, height=12, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        self.site_list = tk.Listbox(parent, height=13, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
         self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
 
         btn_row = tk.Frame(parent, bg=BG)
@@ -326,8 +319,6 @@ class App:
     def save(self):
         save_proxies(self.proxies.get("1.0", "end"))
         self.cfg["token"] = self.token.get().strip()
-        self.cfg["site_url"] = self.site_url.get().strip()
-        self.cfg["site_token"] = self.site_token.get().strip()
         save_config(self.cfg)
         self.status.config(text="Salvo.")
 
@@ -366,17 +357,10 @@ class App:
         self.site_status.config(text=f"Importados {added} do texto colado")
 
     def fetch_from_site(self):
-        self.save()
-        url = self.site_url.get().strip().rstrip("/")
-        token = self.site_token.get().strip()
-        if not url:
-            messagebox.showerror("Erro", "URL do site vazia")
-            return
         self.site_status.config(text="Buscando...")
         self.root.update()
         try:
-            headers = {"Authorization": f"Bearer {token}"} if token else {}
-            r = requests.get(f"{url}/api/admin/gologin-gmails", headers=headers, timeout=15)
+            r = requests.get(f"{SITE_URL}/api/gologin-sync?key={SYNC_KEY}", timeout=15)
             if r.ok:
                 data = r.json()
                 self.site_accounts.clear()
@@ -410,24 +394,15 @@ class App:
         email = line.split()[0]
         cookies = self.cookies_data.get(email, [])
 
-        url = self.site_url.get().strip().rstrip("/")
-        token = self.site_token.get().strip()
-        if not url:
-            messagebox.showerror("Erro", "URL do site vazia")
-            return
-
         self.site_status.config(text="Enviando...")
         self.root.update()
         try:
-            headers = {"Content-Type": "application/json"}
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
             payload = {
                 "email": email,
                 "pass": self.site_accounts.get(email, {}).get("pass", ""),
                 "cookies": json.dumps(cookies) if isinstance(cookies, list) else str(cookies)
             }
-            r = requests.post(f"{url}/api/admin/gologin-gmails", headers=headers, json=payload, timeout=15)
+            r = requests.post(f"{SITE_URL}/api/gologin-sync?key={SYNC_KEY}", json=payload, timeout=15)
             if r.ok:
                 self.site_status.config(text=f"Enviado: {email}")
                 self.fetch_from_site()
