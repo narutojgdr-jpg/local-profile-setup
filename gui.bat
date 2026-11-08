@@ -1,3 +1,2 @@
 @echo off
-python gui.py
-pause
+start "" pythonw.exe gui.py
