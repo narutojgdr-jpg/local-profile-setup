@@ -1,6 +1,6 @@
 @echo off
-echo Atualizando...
+echo Atualizando pasta...
 git pull origin main
 echo.
-python setup.py
+echo Pronto.
 pause
