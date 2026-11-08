@@ -9,7 +9,6 @@ CONFIG_FILE = "config.json"
 PROXIES_FILE = "proxies.txt"
 COOKIES_FILE = "cookies.json"
 
-# Tema mais limpo, preto profundo + roxo
 BG = "#0a0a0f"
 FG = "#f0f0f5"
 MUTED = "#9ca3af"
@@ -288,10 +287,13 @@ class App:
 
         tk.Button(parent, text="Buscar Gmails do Site", command=self.fetch_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=6).pack(pady=8)
 
-        self.site_list = tk.Listbox(parent, height=16, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
+        self.site_list = tk.Listbox(parent, height=14, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none")
         self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
 
-        tk.Button(parent, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(pady=6)
+        btn_row = tk.Frame(parent, bg=BG)
+        btn_row.pack(pady=6)
+        tk.Button(btn_row, text="Criar Perfil do Selecionado", command=self.create_from_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Enviar Conta Local pro Site", command=self.push_to_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
 
         self.site_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self.site_status.pack(pady=6)
@@ -328,7 +330,41 @@ class App:
                     self.site_list.insert(tk.END, f"{item.get('email','')} | {item.get('pass','')}")
                 self.site_status.config(text=f"{len(data.get('items',[]))} itens carregados")
             else:
-                self.site_status.config(text=f"Erro {r.status_code}: endpoint ainda não existe no site")
+                self.site_status.config(text=f"Erro {r.status_code}")
+        except Exception as e:
+            self.site_status.config(text=f"Falha: {str(e)[:60]}")
+
+    def push_to_site(self):
+        sel = self.cookie_list.curselection()
+        if not sel:
+            messagebox.showerror("Erro", "Selecione uma conta na aba Cookies primeiro")
+            return
+        name = self.cookie_list.get(sel[0])
+        cookies = self.cookies_data.get(name, [])
+
+        url = self.site_url.get().strip().rstrip("/")
+        token = self.site_token.get().strip()
+        if not url:
+            messagebox.showerror("Erro", "URL do site vazia")
+            return
+
+        self.site_status.config(text="Enviando...")
+        self.root.update()
+        try:
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            payload = {
+                "email": name,
+                "pass": "",
+                "cookies": json.dumps(cookies) if isinstance(cookies, list) else str(cookies)
+            }
+            r = requests.post(f"{url}/api/admin/gologin-gmails", headers=headers, json=payload, timeout=15)
+            if r.ok:
+                self.site_status.config(text=f"Enviado: {name}")
+                self.fetch_from_site()
+            else:
+                self.site_status.config(text=f"Erro {r.status_code} ao enviar")
         except Exception as e:
             self.site_status.config(text=f"Falha: {str(e)[:60]}")
 
