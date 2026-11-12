@@ -172,6 +172,17 @@ def set_gologin_proxy(token, profile_id, country):
     except Exception as e:
         return False, str(e)
 
+def list_profiles(token):
+    url = "https://api.gologin.com/browser/v2"
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.ok:
+            return True, r.json().get("profiles", [])
+        return False, r.text[:200]
+    except Exception as e:
+        return False, str(e)
+
 def set_cookies(token, profile_id, cookies):
     url = f"https://api.gologin.com/browser/{profile_id}/cookies?fromUser=true&cleanCookies=true"
     headers = {
@@ -197,7 +208,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("660x840")
+        root.geometry("660x900")
         root.configure(bg=BG)
 
         style = ttk.Style()
@@ -213,6 +224,7 @@ class App:
         self.cookies_data = load_cookies()
         self.site_accounts = {}
         self.selected_emails = set()
+        self.profiles_data = []
         self.use_gologin = tk.BooleanVar(value=self.cfg.get("use_gologin", False))
         self.use_gologin.trace_add("write", lambda *a: self.save_gologin_state())
 
@@ -268,12 +280,12 @@ class App:
         self.country.pack(side="left", padx=6)
 
         tk.Label(parent, text="Proxies custom (um por linha)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
-        self.proxies = scrolledtext.ScrolledText(parent, height=9, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.proxies = scrolledtext.ScrolledText(parent, height=6, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.proxies.insert("1.0", load_proxies())
-        self.proxies.pack(padx=12, pady=(0,8), fill="both", expand=True)
+        self.proxies.pack(padx=12, pady=(0,6), fill="x")
 
         frame = tk.Frame(parent, bg=BG)
-        frame.pack(pady=8)
+        frame.pack(pady=6)
         tk.Label(frame, text="Quantidade:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).grid(row=0, column=0, padx=6)
         self.qty = tk.Entry(frame, width=8, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 10), justify="center")
         self.qty.insert(0, "5")
@@ -285,12 +297,31 @@ class App:
         self.prefix.grid(row=0, column=3, padx=6)
 
         tk.Button(parent, text="Salvar Proxies", command=self.save, bg=CARD, fg=FG, relief="flat",
-                  activebackground=BORDER, font=("Segoe UI", 9), padx=12, pady=6).pack(pady=4)
+                  activebackground=BORDER, font=("Segoe UI", 9), padx=12, pady=6).pack(pady=3)
         tk.Button(parent, text="Criar Perfis", command=self.create, bg=ACCENT, fg="white", relief="flat",
-                  activebackground=ACCENT_HOVER, font=("Segoe UI", 9, "bold"), padx=16, pady=7).pack(pady=4)
+                  activebackground=ACCENT_HOVER, font=("Segoe UI", 9, "bold"), padx=16, pady=7).pack(pady=3)
+
+        # === Aplicar proxy em perfis existentes ===
+        tk.Label(parent, text="Aplicar Proxy GoLogin em Perfis Existentes", bg=BG, fg=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(12,4))
+
+        apply_frame = tk.Frame(parent, bg=BG)
+        apply_frame.pack(anchor="w", padx=12, pady=2)
+        tk.Label(apply_frame, text="País do proxy:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
+        self.apply_country = ttk.Combobox(apply_frame, width=18, state="readonly")
+        self.apply_country["values"] = [f"{code.upper()} - {name}" for code, name in COUNTRIES]
+        self.apply_country.current(0)
+        self.apply_country.pack(side="left", padx=6)
+
+        btn_apply_frame = tk.Frame(parent, bg=BG)
+        btn_apply_frame.pack(pady=4)
+        tk.Button(btn_apply_frame, text="Carregar Perfis", command=self.load_profiles, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=10, pady=5).pack(side="left", padx=3)
+        tk.Button(btn_apply_frame, text="Aplicar Proxy nos Marcados", command=self.apply_proxy_to_selected, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=10, pady=5).pack(side="left", padx=3)
+
+        self.profile_listbox = tk.Listbox(parent, height=8, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), selectmode="extended")
+        self.profile_listbox.pack(padx=12, pady=4, fill="x")
 
         self.status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
-        self.status.pack(pady=6)
+        self.status.pack(pady=4)
 
     def build_cookies_tab(self):
         parent = self.tab_cookies
@@ -445,6 +476,61 @@ class App:
         self.cfg["country"] = self.country.get().split(" - ")[0].lower()
         save_config(self.cfg)
         self.status.config(text="Salvo.")
+
+    def load_profiles(self):
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token vazio")
+            return
+
+        def work():
+            ok, data = list_profiles(token)
+            if ok:
+                self.profiles_data = data
+                self.root.after(0, self._refresh_profile_list)
+                self.root.after(0, lambda: self.status.config(text=f"{len(data)} perfis carregados"))
+            else:
+                self.root.after(0, lambda: self.status.config(text=f"Erro: {data[:80]}"))
+
+        self.status.config(text="Carregando perfis...")
+        threading.Thread(target=work, daemon=True).start()
+
+    def _refresh_profile_list(self):
+        self.profile_listbox.delete(0, tk.END)
+        for p in self.profiles_data:
+            name = p.get("name", "sem nome")
+            pid = p.get("id", "")[:8]
+            self.profile_listbox.insert(tk.END, f"{name}  ({pid})")
+
+    def apply_proxy_to_selected(self):
+        sels = self.profile_listbox.curselection()
+        if not sels:
+            messagebox.showerror("Erro", "Selecione um ou mais perfis")
+            return
+
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token vazio")
+            return
+
+        country = self.apply_country.get().split(" - ")[0].lower()
+
+        def work():
+            success = 0
+            total = len(sels)
+            for i, idx in enumerate(sels):
+                profile = self.profiles_data[idx]
+                pid = profile.get("id")
+                name = profile.get("name", "")
+                self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"Aplicando {ii+1}/{total}: {n}"))
+                ok, msg = set_gologin_proxy(token, pid, country)
+                if ok:
+                    success += 1
+                time.sleep(0.4)
+            self.root.after(0, lambda: self.status.config(text=f"Proxy aplicado em {success}/{total} perfis"))
+
+        self.status.config(text="Aplicando proxies...")
+        threading.Thread(target=work, daemon=True).start()
 
     def delete_local(self):
         if not self.selected_emails:
