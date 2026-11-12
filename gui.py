@@ -151,7 +151,7 @@ def set_custom_proxy(token, profile_id, proxy):
     }
     try:
         r = requests.patch(url, headers=headers, json=body, timeout=30)
-        return r.ok, r.text[:150] if not r.ok else "proxy set"
+        return r.ok, r.text[:200] if not r.ok else "proxy set"
     except Exception as e:
         return False, str(e)
 
@@ -162,24 +162,37 @@ def set_gologin_proxy(token, profile_id, country):
         "Content-Type": "application/json"
     }
     body = {
-        "countryCode": country,
+        "countryCode": country.lower(),
         "profileIdToLink": profile_id,
         "isMobile": True
     }
     try:
         r = requests.post(url, headers=headers, json=body, timeout=30)
-        return r.ok, r.text[:150] if not r.ok else "gologin proxy set"
+        if r.ok:
+            return True, "gologin proxy set"
+        return False, f"{r.status_code}: {r.text[:180]}"
     except Exception as e:
         return False, str(e)
 
 def list_profiles(token):
     url = "https://api.gologin.com/browser/v2"
     headers = {"Authorization": f"Bearer {token}"}
+    all_profiles = []
+    page = 1
     try:
-        r = requests.get(url, headers=headers, timeout=30)
-        if r.ok:
-            return True, r.json().get("profiles", [])
-        return False, r.text[:200]
+        while True:
+            r = requests.get(url, headers=headers, params={"page": page}, timeout=30)
+            if not r.ok:
+                return False, r.text[:200]
+            data = r.json()
+            profiles = data.get("profiles", [])
+            all_profiles.extend(profiles)
+            if not profiles or len(profiles) < 30:
+                break
+            page += 1
+            if page > 20:
+                break
+        return True, all_profiles
     except Exception as e:
         return False, str(e)
 
@@ -490,7 +503,7 @@ class App:
                 self.root.after(0, self._refresh_profile_list)
                 self.root.after(0, lambda: self.status.config(text=f"{len(data)} perfis carregados"))
             else:
-                self.root.after(0, lambda: self.status.config(text=f"Erro: {data[:80]}"))
+                self.root.after(0, lambda: self.status.config(text=f"Erro lista: {data[:100]}"))
 
         self.status.config(text="Carregando perfis...")
         threading.Thread(target=work, daemon=True).start()
@@ -518,6 +531,7 @@ class App:
         def work():
             success = 0
             total = len(sels)
+            last_error = ""
             for i, idx in enumerate(sels):
                 profile = self.profiles_data[idx]
                 pid = profile.get("id")
@@ -526,8 +540,13 @@ class App:
                 ok, msg = set_gologin_proxy(token, pid, country)
                 if ok:
                     success += 1
-                time.sleep(0.4)
-            self.root.after(0, lambda: self.status.config(text=f"Proxy aplicado em {success}/{total} perfis"))
+                else:
+                    last_error = msg
+                time.sleep(0.5)
+            final = f"Proxy aplicado em {success}/{total}"
+            if last_error:
+                final += f" | Último erro: {last_error[:80]}"
+            self.root.after(0, lambda m=final: self.status.config(text=m))
 
         self.status.config(text="Aplicando proxies...")
         threading.Thread(target=work, daemon=True).start()
