@@ -161,6 +161,7 @@ def set_gologin_proxy(token, profile_id, country):
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+    # tenta o formato mais comum da documentação
     body = {
         "countryCode": country.lower(),
         "profileIdToLink": profile_id,
@@ -170,7 +171,16 @@ def set_gologin_proxy(token, profile_id, country):
         r = requests.post(url, headers=headers, json=body, timeout=30)
         if r.ok:
             return True, "gologin proxy set"
-        return False, f"{r.status_code}: {r.text[:180]}"
+        # se falhou, tenta com isMobile como string
+        body2 = {
+            "countryCode": country.lower(),
+            "profileIdToLink": profile_id,
+            "isMobile": "true"
+        }
+        r2 = requests.post(url, headers=headers, json=body2, timeout=30)
+        if r2.ok:
+            return True, "gologin proxy set (str)"
+        return False, f"{r.status_code}: {r.text[:120]} | alt: {r2.status_code}: {r2.text[:120]}"
     except Exception as e:
         return False, str(e)
 
@@ -545,7 +555,7 @@ class App:
                 time.sleep(0.5)
             final = f"Proxy aplicado em {success}/{total}"
             if last_error:
-                final += f" | Último erro: {last_error[:80]}"
+                final += f" | Último erro: {last_error[:120]}"
             self.root.after(0, lambda m=final: self.status.config(text=m))
 
         self.status.config(text="Aplicando proxies...")
