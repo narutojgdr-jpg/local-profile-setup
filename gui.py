@@ -212,6 +212,7 @@ class App:
         self.cfg = load_config()
         self.cookies_data = load_cookies()
         self.site_accounts = {}
+        self.selected_emails = set()
         self.use_gologin = tk.BooleanVar(value=self.cfg.get("use_gologin", False))
         self.use_gologin.trace_add("write", lambda *a: self.save_gologin_state())
 
@@ -231,7 +232,6 @@ class App:
         self.build_cookies_tab()
         self.build_site_tab()
 
-        # Auto sync on startup (background)
         self.root.after(500, self.fetch_from_site)
 
     def save_gologin_state(self):
@@ -335,7 +335,7 @@ class App:
                        font=("Segoe UI", 9)).pack(side="left")
 
         tk.Label(parent, text="Cole o export do HTML aqui (=== email | senha === + JSON)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(6,2))
-        self.paste_area = scrolledtext.ScrolledText(parent, height=9, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
+        self.paste_area = scrolledtext.ScrolledText(parent, height=7, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 8))
         self.paste_area.pack(padx=12, pady=(0,6), fill="x")
 
         search_frame = tk.Frame(parent, bg=BG)
@@ -346,15 +346,34 @@ class App:
         search_entry = tk.Entry(search_frame, textvariable=self.search_var, width=40, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Segoe UI", 9))
         search_entry.pack(side="left", padx=6, fill="x", expand=True)
 
-        tk.Label(parent, text="Contas (local + site) — Ctrl+clique pra selecionar vários", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
-        self.site_list = tk.Listbox(parent, height=13, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), activestyle="none", selectmode="extended")
-        self.site_list.pack(padx=12, pady=5, fill="both", expand=True)
+        select_btns = tk.Frame(parent, bg=BG)
+        select_btns.pack(anchor="w", padx=12, pady=2)
+        tk.Button(select_btns, text="Marcar todos visíveis", command=self.select_all_visible, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 8), padx=8, pady=3).pack(side="left", padx=2)
+        tk.Button(select_btns, text="Desmarcar todos", command=self.deselect_all, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 8), padx=8, pady=3).pack(side="left", padx=2)
+
+        tk.Label(parent, text="Contas (marque as caixinhas) — seleção fica salva na busca", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12)
+
+        list_container = tk.Frame(parent, bg=BG)
+        list_container.pack(padx=12, pady=5, fill="both", expand=True)
+
+        self.site_canvas = tk.Canvas(list_container, bg=INPUT, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=self.site_canvas.yview)
+        self.site_inner = tk.Frame(self.site_canvas, bg=INPUT)
+
+        self.site_inner.bind("<Configure>", lambda e: self.site_canvas.configure(scrollregion=self.site_canvas.bbox("all")))
+        self.site_canvas.create_window((0, 0), window=self.site_inner, anchor="nw")
+        self.site_canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.site_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self.site_canvas.bind_all("<MouseWheel>", lambda e: self.site_canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         btn_row = tk.Frame(parent, bg=BG)
         btn_row.pack(pady=6)
-        tk.Button(btn_row, text="Criar Perfis Selecionados", command=self.create_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Criar Perfis Marcados", command=self.create_from_site, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left", padx=4)
         tk.Button(btn_row, text="Enviar Todas pro Site", command=self.push_all_to_site, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
-        tk.Button(btn_row, text="Apagar do Local", command=self.delete_local, bg=CARD, fg="#ff6666", relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
+        tk.Button(btn_row, text="Apagar Marcados do Local", command=self.delete_local, bg=CARD, fg="#ff6666", relief="flat", font=("Segoe UI", 9), padx=12, pady=6).pack(side="left", padx=4)
 
         self.site_status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
         self.site_status.pack(pady=4)
@@ -365,10 +384,14 @@ class App:
             self.cookie_list.insert(tk.END, name)
 
     def refresh_site_list(self):
-        self.site_list.delete(0, tk.END)
+        for widget in self.site_inner.winfo_children():
+            widget.destroy()
+
         query = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
-        all_emails = set(self.cookies_data.keys()) | set(self.site_accounts.keys())
-        for email in sorted(all_emails):
+        all_emails = sorted(set(self.cookies_data.keys()) | set(self.site_accounts.keys()))
+
+        self.check_vars = {}
+        for email in all_emails:
             if query and query not in email.lower():
                 continue
             src = []
@@ -376,7 +399,44 @@ class App:
                 src.append("local")
             if email in self.site_accounts:
                 src.append("site")
-            self.site_list.insert(tk.END, f"{email}  ({', '.join(src)})")
+            label = f"{email}  ({', '.join(src)})"
+
+            var = tk.BooleanVar(value=email in self.selected_emails)
+            self.check_vars[email] = var
+
+            def make_cmd(em, v):
+                def cmd():
+                    if v.get():
+                        self.selected_emails.add(em)
+                    else:
+                        self.selected_emails.discard(em)
+                return cmd
+
+            cb = tk.Checkbutton(
+                self.site_inner,
+                text=label,
+                variable=var,
+                command=make_cmd(email, var),
+                bg=INPUT, fg=FG, selectcolor=CARD,
+                activebackground=INPUT, activeforeground=FG,
+                font=("Segoe UI", 9), anchor="w"
+            )
+            cb.pack(fill="x", padx=4, pady=1)
+
+        self.site_canvas.update_idletasks()
+        self.site_canvas.configure(scrollregion=self.site_canvas.bbox("all"))
+
+    def select_all_visible(self):
+        query = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
+        all_emails = set(self.cookies_data.keys()) | set(self.site_accounts.keys())
+        for email in all_emails:
+            if not query or query in email.lower():
+                self.selected_emails.add(email)
+        self.refresh_site_list()
+
+    def deselect_all(self):
+        self.selected_emails.clear()
+        self.refresh_site_list()
 
     def save(self):
         save_proxies(self.proxies.get("1.0", "end"))
@@ -387,21 +447,19 @@ class App:
         self.status.config(text="Salvo.")
 
     def delete_local(self):
-        sels = self.site_list.curselection()
-        if not sels:
-            messagebox.showerror("Erro", "Selecione uma ou mais contas")
+        if not self.selected_emails:
+            messagebox.showerror("Erro", "Marque uma ou mais contas")
             return
-        if not messagebox.askyesno("Confirmar", f"Apagar {len(sels)} do local?"):
+        if not messagebox.askyesno("Confirmar", f"Apagar {len(self.selected_emails)} do local?"):
             return
-        for sel in sels:
-            line = self.site_list.get(sel)
-            email = line.split()[0]
+        for email in list(self.selected_emails):
             self.cookies_data.pop(email, None)
             self.site_accounts.pop(email, None)
+        self.selected_emails.clear()
         save_cookies(self.cookies_data)
         self.refresh_cookie_list()
         self.refresh_site_list()
-        self.site_status.config(text=f"Apagados {len(sels)} do local")
+        self.site_status.config(text=f"Apagados do local")
 
     def import_pasted(self):
         raw = self.paste_area.get("1.0", "end").strip()
@@ -505,9 +563,8 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def create_from_site(self):
-        sels = self.site_list.curselection()
-        if not sels:
-            messagebox.showerror("Erro", "Selecione um ou mais itens (Ctrl+clique)")
+        if not self.selected_emails:
+            messagebox.showerror("Erro", "Marque um ou mais gmails")
             return
 
         token = self.token.get().strip()
@@ -522,7 +579,7 @@ class App:
             messagebox.showerror("Erro", "Nenhum proxy na lista")
             return
 
-        emails = [self.site_list.get(sel).split()[0] for sel in sels]
+        emails = list(self.selected_emails)
 
         def work():
             created = 0
