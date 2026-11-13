@@ -151,11 +151,11 @@ def set_custom_proxy(token, profile_id, proxy):
     }
     try:
         r = requests.patch(url, headers=headers, json=body, timeout=30)
-        return r.ok, r.text[:200] if not r.ok else "proxy set"
+        return r.ok, r.text[:300] if not r.ok else "ok"
     except Exception as e:
         return False, str(e)
 
-def set_gologin_proxy(token, profile_id, country):
+def generate_gologin_proxy(token, country, custom_name):
     url = "https://api.gologin.com/users-proxies/mobile-proxy"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -163,15 +163,57 @@ def set_gologin_proxy(token, profile_id, country):
     }
     body = {
         "countryCode": country.lower(),
-        "profileIdToLink": profile_id,
-        "isMobile": True
+        "city": "",
+        "browserId": "",
+        "isMobile": False,
+        "isDC": False,
+        "customName": custom_name
     }
     try:
         r = requests.post(url, headers=headers, json=body, timeout=30)
-        full = f"STATUS {r.status_code}\n{r.text[:500]}"
-        if r.ok:
-            return True, full
-        return False, full
+        return r.ok, r.text[:200] if not r.ok else "created"
+    except Exception as e:
+        return False, str(e)
+
+def list_user_proxies(token):
+    url = "https://api.gologin.com/proxy/v2"
+    headers = {"Authorization": f"Bearer {token}"}
+    all_p = []
+    page = 1
+    try:
+        while True:
+            r = requests.get(url, headers=headers, params={"page": page}, timeout=30)
+            if not r.ok:
+                return False, r.text[:200]
+            data = r.json()
+            proxies = data.get("proxies", [])
+            all_p.extend(proxies)
+            if not data.get("hasMore", False) or not proxies:
+                break
+            page += 1
+            if page > 10:
+                break
+        return True, all_p
+    except Exception as e:
+        return False, str(e)
+
+def assign_existing_proxy(token, profile_id, proxy_id):
+    url = "https://api.gologin.com/browser/proxy/many/v2"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "proxies": [
+            {
+                "profileId": profile_id,
+                "proxy": {"id": proxy_id}
+            }
+        ]
+    }
+    try:
+        r = requests.patch(url, headers=headers, json=body, timeout=30)
+        return r.ok, r.text[:200] if not r.ok else "assigned"
     except Exception as e:
         return False, str(e)
 
@@ -222,7 +264,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("660x950")
+        root.geometry("660x980")
         root.configure(bg=BG)
 
         style = ttk.Style()
@@ -239,6 +281,7 @@ class App:
         self.site_accounts = {}
         self.selected_emails = set()
         self.profiles_data = []
+        self.proxies_list = []
         self.use_gologin = tk.BooleanVar(value=self.cfg.get("use_gologin", False))
         self.use_gologin.trace_add("write", lambda *a: self.save_gologin_state())
 
@@ -299,7 +342,7 @@ class App:
         self.country.pack(side="left", padx=6)
 
         tk.Label(parent, text="Proxies custom (um por linha)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(8,2))
-        self.proxies = scrolledtext.ScrolledText(parent, height=5, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.proxies = scrolledtext.ScrolledText(parent, height=4, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
         self.proxies.insert("1.0", load_proxies())
         self.proxies.pack(padx=12, pady=(0,6), fill="x")
 
@@ -320,30 +363,38 @@ class App:
         tk.Button(parent, text="Criar Perfis", command=self.create, bg=ACCENT, fg="white", relief="flat",
                   activebackground=ACCENT_HOVER, font=("Segoe UI", 9, "bold"), padx=16, pady=7).pack(pady=3)
 
-        tk.Label(parent, text="Aplicar Proxy GoLogin em Perfis Existentes", bg=BG, fg=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(12,4))
+        tk.Label(parent, text="Gerar Proxies GoLogin (sem ligar)", bg=BG, fg=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(10,2))
+        gen_frame = tk.Frame(parent, bg=BG)
+        gen_frame.pack(anchor="w", padx=12)
+        tk.Label(gen_frame, text="Qtd:", bg=BG, fg=MUTED).pack(side="left")
+        self.gen_qty = tk.Entry(gen_frame, width=6, bg=INPUT, fg=FG, relief="flat")
+        self.gen_qty.insert(0, "10")
+        self.gen_qty.pack(side="left", padx=4)
+        tk.Label(gen_frame, text="Prefixo:", bg=BG, fg=MUTED).pack(side="left", padx=(10,0))
+        self.gen_prefix = tk.Entry(gen_frame, width=8, bg=INPUT, fg=FG, relief="flat")
+        self.gen_prefix.insert(0, "P")
+        self.gen_prefix.pack(side="left", padx=4)
+        tk.Button(gen_frame, text="Gerar", command=self.generate_proxies, bg=ACCENT, fg="white", relief="flat", padx=8, pady=4).pack(side="left", padx=6)
 
-        apply_frame = tk.Frame(parent, bg=BG)
-        apply_frame.pack(anchor="w", padx=12, pady=2)
-        tk.Label(apply_frame, text="País do proxy:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left")
-        self.apply_country = ttk.Combobox(apply_frame, width=18, state="readonly")
-        self.apply_country["values"] = [f"{code.upper()} - {name}" for code, name in COUNTRIES]
-        self.apply_country.current(0)
-        self.apply_country.pack(side="left", padx=6)
-
+        tk.Label(parent, text="Atribuir Proxies Existentes", bg=BG, fg=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=12, pady=(12,2))
         btn_apply_frame = tk.Frame(parent, bg=BG)
         btn_apply_frame.pack(pady=4)
-        tk.Button(btn_apply_frame, text="Carregar Perfis", command=self.load_profiles, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=10, pady=5).pack(side="left", padx=3)
-        tk.Button(btn_apply_frame, text="Aplicar Proxy nos Marcados", command=self.apply_proxy_to_selected, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=10, pady=5).pack(side="left", padx=3)
+        tk.Button(btn_apply_frame, text="Carregar Perfis", command=self.load_profiles, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=8, pady=4).pack(side="left", padx=3)
+        tk.Button(btn_apply_frame, text="Listar Proxies", command=self.load_proxies_list, bg=CARD, fg=FG, relief="flat", font=("Segoe UI", 9), padx=8, pady=4).pack(side="left", padx=3)
+        tk.Button(btn_apply_frame, text="Atribuir nos Marcados", command=self.assign_existing_to_selected, bg=ACCENT, fg="white", relief="flat", font=("Segoe UI", 9, "bold"), padx=8, pady=4).pack(side="left", padx=3)
 
-        self.profile_listbox = tk.Listbox(parent, height=6, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), selectmode="extended")
-        self.profile_listbox.pack(padx=12, pady=4, fill="x")
+        self.profile_listbox = tk.Listbox(parent, height=5, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), selectmode="extended")
+        self.profile_listbox.pack(padx=12, pady=2, fill="x")
 
-        tk.Label(parent, text="Log da API:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(6,2))
-        self.logbox = scrolledtext.ScrolledText(parent, height=8, bg=INPUT, fg="#00ffaa", insertbackground=FG, relief="flat", font=("Consolas", 8))
-        self.logbox.pack(padx=12, pady=(0,6), fill="x")
+        self.proxy_listbox = tk.Listbox(parent, height=4, bg=INPUT, fg=FG, selectbackground=ACCENT, relief="flat", font=("Segoe UI", 9), selectmode="extended")
+        self.proxy_listbox.pack(padx=12, pady=2, fill="x")
+
+        tk.Label(parent, text="Log:", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(4,0))
+        self.logbox = scrolledtext.ScrolledText(parent, height=6, bg=INPUT, fg="#00ffaa", insertbackground=FG, relief="flat", font=("Consolas", 8))
+        self.logbox.pack(padx=12, pady=(0,4), fill="x")
 
         self.status = tk.Label(parent, text="", bg=BG, fg=MUTED, font=("Segoe UI", 9))
-        self.status.pack(pady=4)
+        self.status.pack(pady=2)
 
     def build_cookies_tab(self):
         parent = self.tab_cookies
@@ -499,6 +550,90 @@ class App:
         save_config(self.cfg)
         self.status.config(text="Salvo.")
 
+    def generate_proxies(self):
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token vazio")
+            return
+        try:
+            qty = int(self.gen_qty.get() or 5)
+        except:
+            qty = 5
+        prefix = self.gen_prefix.get().strip() or "P"
+        country = self.country.get().split(" - ")[0].lower()
+
+        def work():
+            self.root.after(0, lambda: self.log(f"Gerando {qty} proxies {prefix}1.. {country.upper()}"))
+            ok_count = 0
+            for i in range(1, qty + 1):
+                name = f"{prefix}{i}"
+                ok, msg = generate_gologin_proxy(token, country, name)
+                self.root.after(0, lambda n=name, m=msg: self.log(f"{n}: {m}"))
+                if ok:
+                    ok_count += 1
+                time.sleep(0.5)
+            self.root.after(0, lambda: self.log(f"Gerados {ok_count}/{qty}\n"))
+            self.root.after(0, lambda: self.status.config(text=f"Gerados {ok_count}/{qty}"))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def load_proxies_list(self):
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token vazio")
+            return
+
+        def work():
+            ok, data = list_user_proxies(token)
+            if ok:
+                self.proxies_list = data
+                self.root.after(0, self._refresh_proxy_list)
+                self.root.after(0, lambda: self.log(f"Listados {len(data)} proxies"))
+            else:
+                self.root.after(0, lambda: self.log(f"Erro listar proxies: {data}"))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _refresh_proxy_list(self):
+        self.proxy_listbox.delete(0, tk.END)
+        for p in self.proxies_list:
+            name = p.get("customName") or p.get("id", "")[:8]
+            country = p.get("country") or p.get("defaultCountry") or ""
+            self.proxy_listbox.insert(tk.END, f"{name}  ({country})")
+
+    def assign_existing_to_selected(self):
+        sels = self.profile_listbox.curselection()
+        proxy_sels = self.proxy_listbox.curselection()
+        if not sels:
+            messagebox.showerror("Erro", "Selecione perfis")
+            return
+        if not proxy_sels:
+            messagebox.showerror("Erro", "Selecione proxies")
+            return
+
+        token = self.token.get().strip()
+        if not token:
+            messagebox.showerror("Erro", "Token vazio")
+            return
+
+        def work():
+            self.root.after(0, lambda: self.log("Atribuindo proxies existentes..."))
+            success = 0
+            for i, pidx in enumerate(sels):
+                profile = self.profiles_data[pidx]
+                pid = profile.get("id")
+                proxy_idx = proxy_sels[i % len(proxy_sels)]
+                proxy = self.proxies_list[proxy_idx]
+                proxy_id = proxy.get("id")
+                ok, msg = assign_existing_proxy(token, pid, proxy_id)
+                self.root.after(0, lambda n=profile.get("name"), m=msg: self.log(f"{n}: {m}"))
+                if ok:
+                    success += 1
+                time.sleep(0.4)
+            self.root.after(0, lambda: self.log(f"Atribuidos {success}/{len(sels)}\n"))
+
+        threading.Thread(target=work, daemon=True).start()
+
     def load_profiles(self):
         token = self.token.get().strip()
         if not token:
@@ -510,13 +645,11 @@ class App:
             if ok:
                 self.profiles_data = data
                 self.root.after(0, self._refresh_profile_list)
-                self.root.after(0, lambda: self.status.config(text=f"{len(data)} perfis carregados"))
+                self.root.after(0, lambda: self.status.config(text=f"{len(data)} perfis"))
                 self.root.after(0, lambda: self.log(f"Carregados {len(data)} perfis"))
             else:
-                self.root.after(0, lambda: self.status.config(text=f"Erro lista: {data[:100]}"))
                 self.root.after(0, lambda: self.log(f"Erro lista: {data}"))
 
-        self.status.config(text="Carregando perfis...")
         threading.Thread(target=work, daemon=True).start()
 
     def _refresh_profile_list(self):
@@ -525,39 +658,6 @@ class App:
             name = p.get("name", "sem nome")
             pid = p.get("id", "")[:8]
             self.profile_listbox.insert(tk.END, f"{name}  ({pid})")
-
-    def apply_proxy_to_selected(self):
-        sels = self.profile_listbox.curselection()
-        if not sels:
-            messagebox.showerror("Erro", "Selecione um ou mais perfis")
-            return
-
-        token = self.token.get().strip()
-        if not token:
-            messagebox.showerror("Erro", "Token vazio")
-            return
-
-        country = self.apply_country.get().split(" - ")[0].lower()
-
-        def work():
-            success = 0
-            total = len(sels)
-            self.root.after(0, lambda: self.log(f"--- Aplicando proxy {country.upper()} em {total} perfis ---"))
-            for i, idx in enumerate(sels):
-                profile = self.profiles_data[idx]
-                pid = profile.get("id")
-                name = profile.get("name", "")
-                self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"Aplicando {ii+1}/{total}: {n}"))
-                ok, msg = set_gologin_proxy(token, pid, country)
-                self.root.after(0, lambda m=msg, n=name: self.log(f"{n}:\n{m}\n"))
-                if ok:
-                    success += 1
-                time.sleep(0.6)
-            self.root.after(0, lambda: self.status.config(text=f"Proxy aplicado em {success}/{total}"))
-            self.root.after(0, lambda: self.log(f"=== Final: {success}/{total} ===\n"))
-
-        self.status.config(text="Aplicando proxies...")
-        threading.Thread(target=work, daemon=True).start()
 
     def delete_local(self):
         if not self.selected_emails:
@@ -720,7 +820,8 @@ class App:
 
                 profile_id = result
                 if use_gl:
-                    set_gologin_proxy(token, profile_id, country_code)
+                    # just create without linking for now, user can assign later
+                    pass
                 else:
                     proxy = parse_proxy(proxy_lines[idx % len(proxy_lines)])
                     if proxy:
@@ -816,7 +917,7 @@ class App:
                     self.root.after(0, lambda r=result: self.status.config(text=f"Erro: {r[:80]}"))
                     break
                 if use_gl:
-                    set_gologin_proxy(token, result, country_code)
+                    pass  # assign later
                 else:
                     proxy = parse_proxy(proxy_lines[(i-1) % len(proxy_lines)])
                     if proxy:
