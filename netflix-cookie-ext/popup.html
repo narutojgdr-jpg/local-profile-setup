@@ -3,16 +3,22 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body { width: 280px; padding: 16px; font-family: Segoe UI, system-ui; background: #141414; color: #fff; }
-    h3 { margin: 0 0 12px; font-size: 15px; }
-    button { width: 100%; padding: 10px; background: #e50914; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    body { width: 320px; padding: 14px; font-family: Segoe UI, system-ui; background: #141414; color: #fff; margin: 0; }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    label { font-size: 11px; color: #aaa; display: block; margin: 8px 0 3px; }
+    textarea { width: 100%; height: 60px; background: #222; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px; font-size: 11px; font-family: Consolas, monospace; resize: vertical; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; background: #e50914; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     button:hover { background: #f40612; }
-    #status { margin-top: 10px; font-size: 12px; color: #aaa; }
+    #status { margin-top: 8px; font-size: 12px; color: #aaa; min-height: 16px; }
   </style>
 </head>
 <body>
   <h3>Netflix Cookie Login</h3>
-  <button id="login">Entrar com Cookie</button>
+  <label>NetflixId</label>
+  <textarea id="nid" placeholder="Cole o NetflixId aqui"></textarea>
+  <label>SecureNetflixId</label>
+  <textarea id="snid" placeholder="Cole o SecureNetflixId aqui"></textarea>
+  <button id="login">Injetar e Entrar</button>
   <div id="status"></div>
   <script src="popup.js"></script>
 </body>
