@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Netflix Cookie Login",
+  "version": "1.0",
+  "description": "Entra no Netflix usando cookies",
+  "permissions": ["cookies", "tabs"],
+  "host_permissions": ["*://*.netflix.com/*"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
