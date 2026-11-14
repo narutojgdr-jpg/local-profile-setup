@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Netflix Cookies Organizer</title>
+<style>
+:root{--bg:#0a0c10;--card:#13161c;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#e50914;--ok:#00ffa3}
+*{box-sizing:border-box}
+body{font-family:Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{margin:0 0 20px;font-size:1.6rem}
+.drop{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;background:var(--card);margin-bottom:20px;cursor:pointer}
+.drop:hover{border-color:var(--accent)}
+#file{display:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card h3{margin:0 0 8px;font-size:14px;word-break:break-all;color:var(--ok)}
+.cookie{font-size:11px;background:#0d1117;padding:6px 8px;border-radius:6px;margin:4px 0;word-break:break-all;font-family:Consolas,monospace}
+.cookie b{color:#ffb86c}
+.btns{margin-top:10px;display:flex;gap:6px}
+button{background:var(--accent);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+button.sec{background:#222;color:var(--text)}
+#count{margin-bottom:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Netflix Cookies Organizer</h1>
+  <div class="drop" id="drop">Arraste os .txt aqui ou clique pra selecionar<br><small>Múltiplos arquivos</small></div>
+  <input type="file" id="file" accept=".txt" multiple>
+  <div id="count"></div>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+const drop=document.getElementById('drop');
+const file=document.getElementById('file');
+const grid=document.getElementById('grid');
+const countEl=document.getElementById('count');
+
+drop.onclick=()=>file.click();
+drop.ondragover=e=>{e.preventDefault();drop.style.borderColor='#e50914'};
+drop.ondragleave=()=>drop.style.borderColor='';
+drop.ondrop=e=>{e.preventDefault();drop.style.borderColor='';handleFiles(e.dataTransfer.files)};
+file.onchange=e=>handleFiles(e.target.files);
+
+function handleFiles(files){
+  grid.innerHTML='';
+  let total=0;
+  [...files].forEach(f=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const data=parseCookies(reader.result, f.name);
+      if(data.netflixId || data.secure){
+        total++;
+        renderCard(data);
+        countEl.textContent=total+' contas carregadas';
+      }
+    };
+    reader.readAsText(f);
+  });
+}
+
+function parseCookies(text, filename){
+  const lines=text.split(/\r?\n/);
+  const out={name:filename.replace(/\.txt$/i,''), netflixId:'', secure:'', nfvdid:''};
+  for(const line of lines){
+    const parts=line.split('\t');
+    if(parts.length<7) continue;
+    const name=parts[5];
+    const value=parts[6];
+    if(name==='NetflixId') out.netflixId=value;
+    if(name==='SecureNetflixId') out.secure=value;
+    if(name==='nfvdid') out.nfvdid=value;
+  }
+  return out;
+}
+
+function renderCard(d){
+  const div=document.createElement('div');
+  div.className='card';
+  div.innerHTML=`
+    <h3>${d.name}</h3>
+    ${d.netflixId?`<div class="cookie"><b>NetflixId</b><br>${d.netflixId}</div>`:''}
+    ${d.secure?`<div class="cookie"><b>SecureNetflixId</b><br>${d.secure}</div>`:''}
+    ${d.nfvdid?`<div class="cookie"><b>nfvdid</b><br>${d.nfvdid}</div>`:''}
+    <div class="btns">
+      <button onclick="copyThis(this)">Copiar NetflixId + Secure</button>
+    </div>
+  `;
+  grid.appendChild(div);
+}
+
+function copyThis(btn){
+  const card=btn.closest('.card');
+  const texts=[...card.querySelectorAll('.cookie')].map(el=>el.innerText).join('\n\n');
+  navigator.clipboard.writeText(texts).then(()=>{
+    const old=btn.textContent;
+    btn.textContent='Copiado!';
+    setTimeout(()=>btn.textContent=old,1200);
+  });
+}
+</script>
+</body>
+</html>
