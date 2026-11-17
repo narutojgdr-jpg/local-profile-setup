@@ -155,7 +155,7 @@ def set_custom_proxy(token, profile_id, proxy):
     except Exception as e:
         return False, str(e)
 
-def create_and_link_proxy(token, profile_id, country, custom_name):
+def create_proxy_only(token, country, custom_name):
     url = "https://api.gologin.com/users-proxies/mobile-proxy"
     headers = {
         "Authorization": f"Bearer {token}",
@@ -164,15 +164,38 @@ def create_and_link_proxy(token, profile_id, country, custom_name):
     body = {
         "countryCode": country.lower(),
         "city": "",
-        "profileIdToLink": profile_id,
+        "browserId": "",
         "isMobile": False,
         "isDC": False,
         "customName": custom_name
     }
     try:
         r = requests.post(url, headers=headers, json=body, timeout=30)
-        full = f"STATUS {r.status_code}\n{r.text[:400]}"
-        return r.ok, full
+        if r.ok:
+            data = r.json()
+            proxy_id = data.get("id") or data.get("_id") or (data.get("proxy") or {}).get("id")
+            return True, proxy_id, r.text[:200]
+        return False, None, f"STATUS {r.status_code}\n{r.text[:300]}"
+    except Exception as e:
+        return False, None, str(e)
+
+def assign_proxy_id(token, profile_id, proxy_id):
+    url = "https://api.gologin.com/browser/proxy/many/v2"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "proxies": [
+            {
+                "profileId": profile_id,
+                "proxy": {"id": proxy_id}
+            }
+        ]
+    }
+    try:
+        r = requests.patch(url, headers=headers, json=body, timeout=30)
+        return r.ok, f"STATUS {r.status_code}\n{r.text[:250]}" if not r.ok else "assigned"
     except Exception as e:
         return False, str(e)
 
@@ -544,8 +567,9 @@ class App:
             return
 
         proxy_tok = self.get_proxy_token()
-        if not proxy_tok:
-            messagebox.showerror("Erro", "Token Proxy vazio")
+        profile_tok = self.get_profile_token()
+        if not proxy_tok or not profile_tok:
+            messagebox.showerror("Erro", "Tokens vazios")
             return
 
         country = self.apply_country.get().split(" - ")[0].lower()
@@ -553,22 +577,28 @@ class App:
         def work():
             success = 0
             total = len(sels)
-            self.root.after(0, lambda: self.log(f"--- Criando proxy novo {country.upper()} em {total} perfis ---"))
+            self.root.after(0, lambda: self.log(f"--- Criando proxy {country.upper()} e atribuindo em {total} perfis ---"))
             for i, idx in enumerate(sels):
                 profile = self.profiles_data[idx]
                 pid = profile.get("id")
                 name = profile.get("name", "")
-                proxy_name = f"auto-{name[:15]}-{int(time.time())}"
-                self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"Criando {ii+1}/{total}: {n}"))
-                ok, msg = create_and_link_proxy(proxy_tok, pid, country, proxy_name)
-                self.root.after(0, lambda m=msg, n=name: self.log(f"{n}:\n{m}\n"))
-                if ok:
+                proxy_name = f"auto-{name[:12]}-{int(time.time())}"
+                self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"{ii+1}/{total}: {n}"))
+
+                ok, proxy_id, msg = create_proxy_only(proxy_tok, country, proxy_name)
+                self.root.after(0, lambda m=msg, n=name: self.log(f"Criar {n}:\n{m}\n"))
+                if not ok or not proxy_id:
+                    continue
+
+                ok2, msg2 = assign_proxy_id(profile_tok, pid, proxy_id)
+                self.root.after(0, lambda m=msg2, n=name: self.log(f"Atribuir {n}:\n{m}\n"))
+                if ok2:
                     success += 1
-                time.sleep(0.7)
-            self.root.after(0, lambda: self.status.config(text=f"Criados em {success}/{total}"))
+                time.sleep(0.6)
+            self.root.after(0, lambda: self.status.config(text=f"Sucesso {success}/{total}"))
             self.root.after(0, lambda: self.log(f"=== Final: {success}/{total} ===\n"))
 
-        self.status.config(text="Criando proxies...")
+        self.status.config(text="Processando...")
         threading.Thread(target=work, daemon=True).start()
 
     def delete_local(self):
@@ -733,7 +763,9 @@ class App:
 
                 profile_id = result
                 if use_gl:
-                    create_and_link_proxy(proxy_tok, profile_id, country_code, f"auto-{email[:12]}")
+                    okp, proxy_id, msgp = create_proxy_only(proxy_tok, country_code, f"auto-{email[:12]}")
+                    if okp and proxy_id:
+                        assign_proxy_id(profile_tok, profile_id, proxy_id)
                 else:
                     proxy = parse_proxy(proxy_lines[idx % len(proxy_lines)])
                     if proxy:
@@ -831,7 +863,9 @@ class App:
                     self.root.after(0, lambda r=result: self.status.config(text=f"Erro: {r[:80]}"))
                     break
                 if use_gl:
-                    create_and_link_proxy(proxy_tok, result, country_code, f"auto-{name}")
+                    okp, proxy_id, _ = create_proxy_only(proxy_tok, country_code, f"auto-{name}")
+                    if okp and proxy_id:
+                        assign_proxy_id(profile_tok, result, proxy_id)
                 else:
                     proxy = parse_proxy(proxy_lines[(i-1) % len(proxy_lines)])
                     if proxy:
