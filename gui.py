@@ -39,7 +39,7 @@ COUNTRIES = [
 
 def load_config():
     if not Path(CONFIG_FILE).exists():
-        return {"token": "", "use_gologin": False, "country": "br"}
+        return {"profile_token": "", "proxy_token": "", "use_gologin": False, "country": "br"}
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -223,7 +223,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("Profile Setup")
-        root.geometry("660x900")
+        root.geometry("660x980")
         root.configure(bg=BG)
 
         style = ttk.Style()
@@ -272,13 +272,24 @@ class App:
             self.cfg["country"] = self.country.get().split(" - ")[0].lower()
         save_config(self.cfg)
 
+    def get_profile_token(self):
+        return self.profile_token.get().strip()
+
+    def get_proxy_token(self):
+        return self.proxy_token.get().strip() or self.get_profile_token()
+
     def build_profiles_tab(self):
         parent = self.tab_profiles
 
-        tk.Label(parent, text="API Token", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
-        self.token = tk.Entry(parent, width=72, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
-        self.token.insert(0, self.cfg.get("token", ""))
-        self.token.pack(padx=12, pady=(0,8))
+        tk.Label(parent, text="Token Perfil (cria perfil)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(12,2))
+        self.profile_token = tk.Entry(parent, width=72, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.profile_token.insert(0, self.cfg.get("profile_token", self.cfg.get("token", "")))
+        self.profile_token.pack(padx=12, pady=(0,4))
+
+        tk.Label(parent, text="Token Proxy (gera/atribui proxy)", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(4,2))
+        self.proxy_token = tk.Entry(parent, width=72, bg=INPUT, fg=FG, insertbackground=FG, relief="flat", font=("Consolas", 9))
+        self.proxy_token.insert(0, self.cfg.get("proxy_token", ""))
+        self.proxy_token.pack(padx=12, pady=(0,8))
 
         tk.Checkbutton(parent, text="Usar proxies do GoLogin", variable=self.use_gologin,
                        bg=BG, fg=FG, selectcolor=INPUT, activebackground=BG, activeforeground=FG,
@@ -316,7 +327,7 @@ class App:
         self.prefix.insert(0, "P")
         self.prefix.grid(row=0, column=3, padx=6)
 
-        tk.Button(parent, text="Salvar Proxies", command=self.save, bg=CARD, fg=FG, relief="flat",
+        tk.Button(parent, text="Salvar", command=self.save, bg=CARD, fg=FG, relief="flat",
                   activebackground=BORDER, font=("Segoe UI", 9), padx=12, pady=6).pack(pady=3)
         tk.Button(parent, text="Criar Perfis", command=self.create, bg=ACCENT, fg="white", relief="flat",
                   activebackground=ACCENT_HOVER, font=("Segoe UI", 9, "bold"), padx=16, pady=7).pack(pady=3)
@@ -494,16 +505,17 @@ class App:
 
     def save(self):
         save_proxies(self.proxies.get("1.0", "end"))
-        self.cfg["token"] = self.token.get().strip()
+        self.cfg["profile_token"] = self.profile_token.get().strip()
+        self.cfg["proxy_token"] = self.proxy_token.get().strip()
         self.cfg["use_gologin"] = self.use_gologin.get()
         self.cfg["country"] = self.country.get().split(" - ")[0].lower()
         save_config(self.cfg)
         self.status.config(text="Salvo.")
 
     def load_profiles(self):
-        token = self.token.get().strip()
+        token = self.get_profile_token()
         if not token:
-            messagebox.showerror("Erro", "Token vazio")
+            messagebox.showerror("Erro", "Token Perfil vazio")
             return
 
         def work():
@@ -531,9 +543,9 @@ class App:
             messagebox.showerror("Erro", "Selecione um ou mais perfis")
             return
 
-        token = self.token.get().strip()
-        if not token:
-            messagebox.showerror("Erro", "Token vazio")
+        proxy_tok = self.get_proxy_token()
+        if not proxy_tok:
+            messagebox.showerror("Erro", "Token Proxy vazio")
             return
 
         country = self.apply_country.get().split(" - ")[0].lower()
@@ -548,7 +560,7 @@ class App:
                 name = profile.get("name", "")
                 proxy_name = f"auto-{name[:15]}-{int(time.time())}"
                 self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"Criando {ii+1}/{total}: {n}"))
-                ok, msg = create_and_link_proxy(token, pid, country, proxy_name)
+                ok, msg = create_and_link_proxy(proxy_tok, pid, country, proxy_name)
                 self.root.after(0, lambda m=msg, n=name: self.log(f"{n}:\n{m}\n"))
                 if ok:
                     success += 1
@@ -556,7 +568,7 @@ class App:
             self.root.after(0, lambda: self.status.config(text=f"Criados em {success}/{total}"))
             self.root.after(0, lambda: self.log(f"=== Final: {success}/{total} ===\n"))
 
-        self.status.config(text="Criando proxies..." )
+        self.status.config(text="Criando proxies...")
         threading.Thread(target=work, daemon=True).start()
 
     def delete_local(self):
@@ -680,9 +692,9 @@ class App:
             messagebox.showerror("Erro", "Marque um ou mais gmails")
             return
 
-        token = self.token.get().strip()
-        if not token:
-            messagebox.showerror("Erro", "Token GoLogin vazio (aba Perfis)")
+        profile_tok = self.get_profile_token()
+        if not profile_tok:
+            messagebox.showerror("Erro", "Token Perfil vazio")
             return
 
         use_gl = self.use_gologin.get()
@@ -693,6 +705,7 @@ class App:
             return
 
         emails = list(self.selected_emails)
+        proxy_tok = self.get_proxy_token()
 
         def work():
             created = 0
@@ -712,7 +725,7 @@ class App:
 
                 self.root.after(0, lambda i=idx, e=email: self.site_status.config(text=f"Criando {i+1}/{total}: {e}"))
 
-                ok, result = create_profile(token, email)
+                ok, result = create_profile(profile_tok, email)
                 if not ok:
                     errors.append(f"{email}: {result}")
                     self.root.after(0, lambda r=result: self.site_status.config(text=f"Erro criar: {r[:80]}"))
@@ -720,13 +733,13 @@ class App:
 
                 profile_id = result
                 if use_gl:
-                    create_and_link_proxy(token, profile_id, country_code, f"auto-{email[:12]}")
+                    create_and_link_proxy(proxy_tok, profile_id, country_code, f"auto-{email[:12]}")
                 else:
                     proxy = parse_proxy(proxy_lines[idx % len(proxy_lines)])
                     if proxy:
-                        set_custom_proxy(token, profile_id, proxy)
+                        set_custom_proxy(profile_tok, profile_id, proxy)
 
-                ok_c, msg_c = set_cookies(token, profile_id, cookies)
+                ok_c, msg_c = set_cookies(profile_tok, profile_id, cookies)
                 if not ok_c:
                     errors.append(f"{email}: cookies {msg_c}")
 
@@ -776,9 +789,9 @@ class App:
             return
         name = self.cookie_list.get(sel[0])
         cookies = self.cookies_data.get(name, [])
-        token = self.token.get().strip()
+        token = self.get_profile_token()
         if not token:
-            messagebox.showerror("Erro", "Token vazio (aba Perfis)")
+            messagebox.showerror("Erro", "Token Perfil vazio")
             return
 
         def work():
@@ -793,9 +806,9 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def create(self):
-        token = self.token.get().strip()
-        if not token:
-            messagebox.showerror("Erro", "Token vazio")
+        profile_tok = self.get_profile_token()
+        if not profile_tok:
+            messagebox.showerror("Erro", "Token Perfil vazio")
             return
         qty = int(self.qty.get() or 1)
         prefix = self.prefix.get().strip() or "P"
@@ -806,21 +819,23 @@ class App:
             messagebox.showerror("Erro", "Nenhum proxy")
             return
 
+        proxy_tok = self.get_proxy_token()
+
         def work():
             created = 0
             for i in range(1, qty + 1):
                 name = f"{prefix}{i}"
                 self.root.after(0, lambda n=i: self.status.config(text=f"Criando {n}/{qty}..."))
-                ok, result = create_profile(token, name)
+                ok, result = create_profile(profile_tok, name)
                 if not ok:
                     self.root.after(0, lambda r=result: self.status.config(text=f"Erro: {r[:80]}"))
                     break
                 if use_gl:
-                    create_and_link_proxy(token, result, country_code, f"auto-{name}")
+                    create_and_link_proxy(proxy_tok, result, country_code, f"auto-{name}")
                 else:
                     proxy = parse_proxy(proxy_lines[(i-1) % len(proxy_lines)])
                     if proxy:
-                        set_custom_proxy(token, result, proxy)
+                        set_custom_proxy(profile_tok, result, proxy)
                 created += 1
                 time.sleep(0.3)
             self.root.after(0, lambda: self.status.config(text=f"{created}/{qty} criados"))
