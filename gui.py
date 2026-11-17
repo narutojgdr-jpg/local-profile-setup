@@ -269,6 +269,22 @@ class App:
         self.build_site_tab()
 
         self.root.after(500, self.fetch_from_site)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_close(self):
+        try:
+            self.cfg["profile_token"] = self.profile_token.get().strip()
+            self.cfg["proxy_token"] = self.proxy_token.get().strip()
+            self.cfg["use_gologin"] = self.use_gologin.get()
+            if hasattr(self, "country"):
+                self.cfg["country"] = self.country.get().split(" - ")[0].lower()
+            save_config(self.cfg)
+            if hasattr(self, "proxies"):
+                save_proxies(self.proxies.get("1.0", "end"))
+            save_cookies(self.cookies_data)
+        except:
+            pass
+        self.root.destroy()
 
     def log(self, msg):
         if hasattr(self, "logbox"):
