@@ -173,31 +173,17 @@ def create_proxy_only(token, country, custom_name):
         r = requests.post(url, headers=headers, json=body, timeout=30)
         if r.ok:
             data = r.json()
-            proxy_id = data.get("id") or data.get("_id") or (data.get("proxy") or {}).get("id")
-            return True, proxy_id, r.text[:200]
-        return False, None, f"STATUS {r.status_code}\n{r.text[:300]}"
+            proxy_obj = {
+                "mode": data.get("mode", "http"),
+                "host": data.get("host"),
+                "port": int(data.get("port", 10080)),
+                "username": data.get("username", ""),
+                "password": data.get("password", "")
+            }
+            return True, proxy_obj, r.text[:180]
+        return False, None, f"STATUS {r.status_code}\n{r.text[:280]}"
     except Exception as e:
         return False, None, str(e)
-
-def assign_proxy_id(token, profile_id, proxy_id):
-    url = "https://api.gologin.com/browser/proxy/many/v2"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "proxies": [
-            {
-                "profileId": profile_id,
-                "proxy": {"id": proxy_id}
-            }
-        ]
-    }
-    try:
-        r = requests.patch(url, headers=headers, json=body, timeout=30)
-        return r.ok, f"STATUS {r.status_code}\n{r.text[:250]}" if not r.ok else "assigned"
-    except Exception as e:
-        return False, str(e)
 
 def list_profiles(token):
     url = "https://api.gologin.com/browser/v2"
@@ -585,12 +571,12 @@ class App:
                 proxy_name = f"auto-{name[:12]}-{int(time.time())}"
                 self.root.after(0, lambda n=name, ii=i: self.status.config(text=f"{ii+1}/{total}: {n}"))
 
-                ok, proxy_id, msg = create_proxy_only(proxy_tok, country, proxy_name)
+                ok, proxy_obj, msg = create_proxy_only(proxy_tok, country, proxy_name)
                 self.root.after(0, lambda m=msg, n=name: self.log(f"Criar {n}:\n{m}\n"))
-                if not ok or not proxy_id:
+                if not ok or not proxy_obj:
                     continue
 
-                ok2, msg2 = assign_proxy_id(profile_tok, pid, proxy_id)
+                ok2, msg2 = set_custom_proxy(profile_tok, pid, proxy_obj)
                 self.root.after(0, lambda m=msg2, n=name: self.log(f"Atribuir {n}:\n{m}\n"))
                 if ok2:
                     success += 1
@@ -763,9 +749,9 @@ class App:
 
                 profile_id = result
                 if use_gl:
-                    okp, proxy_id, msgp = create_proxy_only(proxy_tok, country_code, f"auto-{email[:12]}")
-                    if okp and proxy_id:
-                        assign_proxy_id(profile_tok, profile_id, proxy_id)
+                    okp, proxy_obj, msgp = create_proxy_only(proxy_tok, country_code, f"auto-{email[:12]}")
+                    if okp and proxy_obj:
+                        set_custom_proxy(profile_tok, profile_id, proxy_obj)
                 else:
                     proxy = parse_proxy(proxy_lines[idx % len(proxy_lines)])
                     if proxy:
@@ -863,9 +849,9 @@ class App:
                     self.root.after(0, lambda r=result: self.status.config(text=f"Erro: {r[:80]}"))
                     break
                 if use_gl:
-                    okp, proxy_id, _ = create_proxy_only(proxy_tok, country_code, f"auto-{name}")
-                    if okp and proxy_id:
-                        assign_proxy_id(profile_tok, result, proxy_id)
+                    okp, proxy_obj, _ = create_proxy_only(proxy_tok, country_code, f"auto-{name}")
+                    if okp and proxy_obj:
+                        set_custom_proxy(profile_tok, result, proxy_obj)
                 else:
                     proxy = parse_proxy(proxy_lines[(i-1) % len(proxy_lines)])
                     if proxy:
