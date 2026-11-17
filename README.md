@@ -1,10 +1,22 @@
-# local-profile-setup
+# ProfileManager
 
-Local tool to configure browser profiles.
+Ferramenta local pra gerenciar perfis e proxies.
 
-1. Edit proxies.txt with your proxy list (host:port)
-2. Run run.bat
-3. Enter API token when asked
-4. Profiles will be created
+## Como usar (sem instalar Python)
 
-Refresh the browser app after running.
+1. No seu PC, rode o `build_exe.bat` uma vez
+2. Ele vai gerar o `dist/ProfileManager.exe`
+3. Envie só esse `.exe` pro seu amigo
+4. Ele só clica e abre
+
+## Ou usar com Python
+
+- Precisa de **Python 3.10+**
+- Rode `pip install requests`
+- Depois clique no `ProfileManager.bat`
+
+## Arquivos
+
+- `ProfileManager.bat` → abre o app
+- `build_exe.bat` → gera o .exe standalone
+- `gui.py` → código principal
