@@ -1,17 +1,13 @@
-def create_profile(token, name, extensions=None):
-    url = "https://api.gologin.com/browser/custom"
+def create_profile(token, name):
+    url = "https://api.gologin.com/browser/quick"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
     body = {
         "os": "win",
-        "name": name,
-        "mediaAutoplayEnabled": False,
-        "imagesEnabled": True
+        "name": name
     }
-    if extensions:
-        body["chromeExtensions"] = extensions
     try:
         r = requests.post(url, headers=headers, json=body, timeout=30)
         if r.ok:
